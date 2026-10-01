@@ -1,0 +1,4 @@
+.venv/
+.platformio/
+.pio/
+__pycache__/
