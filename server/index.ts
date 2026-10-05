@@ -1,3 +1,6 @@
+import { appendDatasetSample } from "./dataset";
+import { sendTelegramAlert } from "./telegram";
+
 const PORT = Number(process.env.PORT ?? 8787);
 
 type Vector3 = { x: number; y: number; z: number };
@@ -138,8 +141,24 @@ const server = Bun.serve({
 
         broadcast({ type: "telemetry", data: value });
 
+        void appendDatasetSample({
+          source: "real",
+          label: "NORMAL",
+          helmetId: value.helmetId,
+          timestamp: value.timestamp,
+          accel: value.accel,
+          gyro: value.gyro,
+          gas: value.gas,
+          battery: value.battery,
+        }).catch((error) => console.error("Dataset write error:", error));
+
         const event = evaluate(value, previous);
-        if (event) broadcast({ type: "event", data: event });
+        if (event) {
+          broadcast({ type: "event", data: event });
+          void sendTelegramAlert(event, value).catch((error) =>
+            console.error("Telegram notification error:", error),
+          );
+        }
       } catch {
         socket.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
       }
