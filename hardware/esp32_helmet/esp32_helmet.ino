@@ -7,17 +7,6 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-// ============================================================
-// CASCO IoT - configuración persistente
-// ============================================================
-// Primera vez:
-// 1) El ESP32 crea la red Wi-Fi "CASCO-SETUP".
-// 2) Conéctate a ella desde el teléfono/PC.
-// 3) Abre http://192.168.4.1
-// 4) Guarda SSID, contraseña, IP del servidor y puerto.
-// La configuración queda guardada en la memoria NVS del ESP32.
-// ============================================================
-
 Preferences preferences;
 WebServer setupServer(80);
 WebSocketsClient webSocket;
@@ -32,27 +21,71 @@ String helmetId;
 const char* SETUP_AP_NAME = "CASCO-SETUP";
 const char* SERVER_PATH = "/ws";
 
-const int MQ2_PIN = 34;
-const int BUZZER_PIN = 25;
+const int MQ2_PIN = 34;       // ADC1; GPIO34 es solo entrada.
+const int BUZZER_PIN = 25;   // SOLO controla transistor/MOSFET.
+
+const int GAS_WARNING = 520;
+const int GAS_CRITICAL = 700;
+const float IMPACT_ACCELERATION = 22.0;
+const float IMPACT_GYRO = 280.0;
+const float LOW_ACTIVITY_ACCEL_DELTA = 0.60;
+const float LOW_ACTIVITY_GYRO = 35.0;
 
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL_MS = 200;
 
-bool setupMode = false;
+enum BuzzerPattern { BUZZER_OFF, BUZZER_WARNING, BUZZER_CRITICAL };
+BuzzerPattern buzzerPattern = BUZZER_OFF;
+unsigned long buzzerStartedAt = 0;
+bool buzzerOutput = false;
 
-void beepAlert() {
-  digitalWrite(BUZZER_PIN, HIGH);
-  delay(250);
-  digitalWrite(BUZZER_PIN, LOW);
-}
+bool setupMode = false;
+bool fallCandidate = false;
+unsigned long impactAt = 0;
 
 String htmlEscape(const String& value) {
   String result = value;
   result.replace("&", "&amp;");
   result.replace("<", "&lt;");
   result.replace(">", "&gt;");
-  result.replace(""", "&quot;");
+  result.replace("\"", "&quot;");
   return result;
+}
+
+String jsonEscape(const String& value) {
+  String result = value;
+  result.replace("\\", "\\\\");
+  result.replace("\"", "\\"");
+  result.replace("\n", "\\n");
+  result.replace("\r", "\\r");
+  return result;
+}
+
+void setBuzzerPattern(BuzzerPattern pattern) {
+  if (pattern > buzzerPattern || pattern == BUZZER_CRITICAL) {
+    buzzerPattern = pattern;
+    buzzerStartedAt = millis();
+  }
+}
+
+void updateBuzzer() {
+  if (buzzerPattern == BUZZER_OFF) {
+    if (buzzerOutput) {
+      digitalWrite(BUZZER_PIN, LOW);
+      buzzerOutput = false;
+    }
+    return;
+  }
+
+  const unsigned long period = buzzerPattern == BUZZER_CRITICAL ? 300 : 700;
+  const unsigned long onTime = buzzerPattern == BUZZER_CRITICAL ? 150 : 100;
+  const unsigned long phase = (millis() - buzzerStartedAt) % period;
+  const bool shouldBeOn = phase < onTime;
+
+  if (shouldBeOn != buzzerOutput) {
+    digitalWrite(BUZZER_PIN, shouldBeOn ? HIGH : LOW);
+    buzzerOutput = shouldBeOn;
+  }
 }
 
 void handleSetupPage() {
@@ -98,7 +131,7 @@ small{color:#666}
   html += R"HTML(" required>
 <button type="submit">Guardar y reiniciar</button>
 </form>
-<p><small>Servidor WebSocket: ws://HOST:PUERTO/ws</small></p>
+<p><small>WebSocket: ws://HOST:PUERTO/ws</small></p>
 </main></body></html>
 )HTML";
 
@@ -112,10 +145,16 @@ void handleSetupSave() {
     return;
   }
 
+  const int port = setupServer.arg("port").toInt();
+  if (port < 1 || port > 65535) {
+    setupServer.send(400, "text/plain", "Puerto inválido.");
+    return;
+  }
+
   preferences.putString("ssid", setupServer.arg("ssid"));
   preferences.putString("password", setupServer.arg("password"));
   preferences.putString("server", setupServer.arg("server"));
-  preferences.putUShort("port", (uint16_t)setupServer.arg("port").toInt());
+  preferences.putUShort("port", (uint16_t)port);
   preferences.putString("helmet", setupServer.arg("helmet"));
 
   setupServer.send(200, "text/html; charset=utf-8",
@@ -127,13 +166,11 @@ void handleSetupSave() {
 
 bool loadConfiguration() {
   preferences.begin("helmet", false);
-
   wifiSsid = preferences.getString("ssid", "");
   wifiPassword = preferences.getString("password", "");
   serverHost = preferences.getString("server", "");
   serverPort = preferences.getUShort("port", 8787);
   helmetId = preferences.getString("helmet", "CASCO-001");
-
   return wifiSsid.length() > 0 && serverHost.length() > 0;
 }
 
@@ -144,8 +181,7 @@ void startSetupPortal() {
 
   Serial.println();
   Serial.println("=== MODO CONFIGURACION ===");
-  Serial.print("Red: ");
-  Serial.println(SETUP_AP_NAME);
+  Serial.println("Red: CASCO-SETUP");
   Serial.println("Abre: http://192.168.4.1");
 
   setupServer.on("/", HTTP_GET, handleSetupPage);
@@ -161,14 +197,15 @@ void connectWiFi() {
   unsigned long started = millis();
 
   while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) {
-    delay(500);
+    updateBuzzer();
+    delay(100);
     Serial.print(".");
   }
 
   Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("No se pudo conectar. Volviendo al modo CASCO-SETUP.");
+    Serial.println("No se pudo conectar. Volviendo a CASCO-SETUP.");
     startSetupPortal();
     return;
   }
@@ -177,44 +214,41 @@ void connectWiFi() {
   Serial.println(WiFi.localIP());
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-
-  Serial.print("Sincronizando reloj");
   time_t now = time(nullptr);
   started = millis();
 
   while (now < 1700000000 && millis() - started < 10000) {
-    delay(250);
-    Serial.print(".");
+    updateBuzzer();
+    delay(100);
     now = time(nullptr);
   }
 
-  Serial.println();
-  if (now >= 1700000000) {
-    Serial.println("Reloj sincronizado.");
-  } else {
-    Serial.println("Aviso: reloj NTP no disponible; se usara millis como respaldo.");
-  }
+  if (now >= 1700000000) Serial.println("Reloj sincronizado.");
+  else Serial.println("Aviso: NTP no disponible; se usará millis como respaldo.");
 }
 
 void setupMPU6050() {
-  Wire.begin();
+  Wire.begin(21, 22);
 
   if (!mpu.begin()) {
     Serial.println("ERROR: no se encontró el MPU6050.");
+    setBuzzerPattern(BUZZER_CRITICAL);
     while (true) {
-      beepAlert();
-      delay(1000);
+      updateBuzzer();
+      delay(5);
     }
   }
 
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-
   Serial.println("MPU6050 listo.");
 }
 
 void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
+  (void)payload;
+  (void)length;
+
   switch (type) {
     case WStype_CONNECTED:
       Serial.println("WebSocket conectado al servidor.");
@@ -238,21 +272,60 @@ void setupWebSocket() {
 
 unsigned long long timestampMs() {
   time_t now = time(nullptr);
-  if (now >= 1700000000) {
-    return (unsigned long long)now * 1000ULL;
-  }
+  if (now >= 1700000000) return (unsigned long long)now * 1000ULL;
   return (unsigned long long)millis();
+}
+
+void updateLocalSafety(float acceleration, float rotation, int gasRaw) {
+  if (gasRaw >= GAS_CRITICAL) {
+    setBuzzerPattern(BUZZER_CRITICAL);
+  } else if (gasRaw >= GAS_WARNING) {
+    setBuzzerPattern(BUZZER_WARNING);
+  }
+
+  const bool impact =
+    acceleration >= IMPACT_ACCELERATION || rotation >= IMPACT_GYRO;
+
+  if (impact) {
+    setBuzzerPattern(BUZZER_CRITICAL);
+    fallCandidate = true;
+    impactAt = millis();
+    return;
+  }
+
+  if (fallCandidate && millis() - impactAt >= 1200) {
+    const bool lowActivity =
+      fabs(acceleration - 9.81f) <= LOW_ACTIVITY_ACCEL_DELTA &&
+      rotation <= LOW_ACTIVITY_GYRO;
+
+    if (lowActivity) setBuzzerPattern(BUZZER_CRITICAL);
+    fallCandidate = false;
+  }
 }
 
 void sendTelemetry() {
   sensors_event_t accel, gyro, temperature;
   mpu.getEvent(&accel, &gyro, &temperature);
 
-  int gasRaw = analogRead(MQ2_PIN);
-  int battery = 100; // Reemplazar por lectura real mediante divisor de tensión.
+  const int gasRaw = analogRead(MQ2_PIN);
+  const int battery = 100; // Placeholder hasta instalar divisor de tensión.
+
+  const float acceleration = sqrtf(
+    accel.acceleration.x * accel.acceleration.x +
+    accel.acceleration.y * accel.acceleration.y +
+    accel.acceleration.z * accel.acceleration.z
+  );
+  const float rotation = sqrtf(
+    gyro.gyro.x * gyro.gyro.x +
+    gyro.gyro.y * gyro.gyro.y +
+    gyro.gyro.z * gyro.gyro.z
+  );
+
+  // La alarma local se evalúa antes de cualquier comunicación.
+  updateLocalSafety(acceleration, rotation, gasRaw);
 
   String json = "{";
-  json += "\"helmetId\":\"" + helmetId + "\",";
+  json += "\"helmetId\":\"" + jsonEscape(helmetId) + "\",";
   json += "\"timestamp\":" + String(timestampMs()) + ",";
   json += "\"accel\":{";
   json += "\"x\":" + String(accel.acceleration.x, 3) + ",";
@@ -267,20 +340,18 @@ void sendTelemetry() {
   json += "}";
 
   webSocket.sendTXT(json);
-
-  // Alerta local preliminar; el umbral debe calibrarse con el MQ-2 real.
-  if (gasRaw >= 700) {
-    beepAlert();
-  }
-
   Serial.println(json);
 }
 
 void setup() {
   Serial.begin(115200);
+
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
+
   pinMode(MQ2_PIN, INPUT);
+  analogReadResolution(12);
+  analogSetPinAttenuation(MQ2_PIN, ADC_11db);
 
   setupMPU6050();
 
@@ -291,12 +362,12 @@ void setup() {
 
   connectWiFi();
 
-  if (!setupMode) {
-    setupWebSocket();
-  }
+  if (!setupMode) setupWebSocket();
 }
 
 void loop() {
+  updateBuzzer();
+
   if (setupMode) {
     setupServer.handleClient();
     return;
