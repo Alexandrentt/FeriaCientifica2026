@@ -85,3 +85,22 @@ ESP32 + MPU6050 + MQ-2
           v
       dashboard React
 ```
+
+
+## Configuración Wi-Fi del ESP32
+
+El firmware actual usa la memoria NVS del ESP32 mediante `Preferences`. Ya no es necesario recompilar el firmware cada vez que cambie la red o la IP del servidor.
+
+En el primer arranque:
+
+1. El ESP32 crea la red Wi-Fi `CASCO-SETUP`.
+2. Conéctate a esa red desde el teléfono o la computadora.
+3. Abre `http://192.168.4.1`.
+4. Introduce SSID, contraseña, IP/host del servidor, puerto `8787` e ID del casco.
+5. Pulsa **Guardar y reiniciar**.
+
+La configuración queda guardada en la memoria no volátil del ESP32. En los siguientes arranques intentará conectarse automáticamente.
+
+Si la red configurada deja de existir, el ESP32 vuelve al modo `CASCO-SETUP` después de un intento de conexión fallido.
+
+> El ESP32 y la computadora deben estar en la misma red local. El host del servidor debe ser la IPv4 de la computadora en esa red, no `localhost`.
