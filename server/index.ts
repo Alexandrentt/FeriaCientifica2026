@@ -141,9 +141,13 @@ const server = Bun.serve({
 
         broadcast({ type: "telemetry", data: value });
 
+        const event = evaluate(value, previous);
         void appendDatasetSample({
           source: "real",
-          label: "NORMAL",
+          label:
+            event?.type === "POSSIBLE_FALL" ? "POSSIBLE_FALL" :
+            event?.type === "GAS_DETECTED" && event.risk === "HIGH" ? "GAS_CRITICAL" :
+            event?.type === "GAS_DETECTED" ? "GAS_WARNING" : "NORMAL",
           helmetId: value.helmetId,
           timestamp: value.timestamp,
           accel: value.accel,
@@ -152,7 +156,6 @@ const server = Bun.serve({
           battery: value.battery,
         }).catch((error) => console.error("Dataset write error:", error));
 
-        const event = evaluate(value, previous);
         if (event) {
           broadcast({ type: "event", data: event });
           void sendTelegramAlert(event, value).catch((error) =>
