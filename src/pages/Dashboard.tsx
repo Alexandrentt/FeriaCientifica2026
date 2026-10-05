@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [simulation, setSimulation] = useState<SafetyEventType>("NORMAL");
   const [connected, setConnected] = useState(false);
 
-  const socketRef = useRef<WebSocket>();
+  const socketRef = useRef<WebSocket | undefined>(undefined);
   const simulationStepRef = useRef(0);
   const lastSimEventRef = useRef(0);
 
