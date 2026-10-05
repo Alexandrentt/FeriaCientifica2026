@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
@@ -228,7 +229,7 @@ export default function Dashboard() {
   );
 }
 
-function Summary({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function Summary({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
   return (
     <Card className="border-border/70 shadow-none">
       <CardContent className="flex items-center gap-3 p-4">
@@ -242,7 +243,7 @@ function Summary({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function SensorValue({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function SensorValue({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">{icon}{label}</div>
@@ -251,7 +252,7 @@ function SensorValue({ icon, label, value }: { icon: React.ReactNode; label: str
   );
 }
 
-function SimulationButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function SimulationButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <Button type="button" variant={active ? "default" : "outline"} className="w-full justify-start" onClick={onClick}>
       {children}
