@@ -13,6 +13,7 @@ export type DatasetSample = {
   label: DatasetLabel;
   helmetId: string;
   timestamp: number;
+  windowId?: string;
   accel: { x: number; y: number; z: number };
   gyro: { x: number; y: number; z: number };
   gas: number;
@@ -23,6 +24,7 @@ const DATASET_DIR = new URL("./data/", import.meta.url);
 const DATASET_FILE = new URL("./data/helmet_dataset.jsonl", import.meta.url);
 
 let ready: Promise<void> | undefined;
+let writeQueue = Promise.resolve();
 
 async function ensureDataset() {
   if (!ready) {
@@ -33,7 +35,9 @@ async function ensureDataset() {
 
 export async function appendDatasetSample(sample: DatasetSample) {
   await ensureDataset();
-  await appendFile(DATASET_FILE, JSON.stringify(sample) + "\n");
+  const line = JSON.stringify(sample) + "\n";
+  writeQueue = writeQueue.then(() => appendFile(DATASET_FILE, line));
+  await writeQueue;
 }
 
 export function datasetPath() {
