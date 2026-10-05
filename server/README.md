@@ -20,25 +20,17 @@ bun install
 
 ## 3. Arrancar el servidor
 
+Desde la raíz del repositorio usa directamente:
+
 ```bash
-bun run server
+bun run server/index.ts
 ```
 
-Por defecto escucha en:
-
-- HTTP: `http://localhost:8787`
-- WebSocket: `ws://localhost:8787/ws`
-- Estado: `http://localhost:8787/health`
-
-Desde otra computadora de la misma red puedes comprobar el estado usando la IP de la computadora servidor.
+Por defecto escucha en `http://localhost:8787`, WebSocket `ws://localhost:8787/ws` y estado `http://localhost:8787/health`.
 
 ## 4. Configurar el ESP32
 
-Abre:
-
-`hardware/esp32_helmet/esp32_helmet.ino`
-
-Cambia:
+Abre `hardware/esp32_helmet/esp32_helmet.ino` y cambia:
 
 ```cpp
 const char* WIFI_SSID = "TU_WIFI";
@@ -47,13 +39,11 @@ const char* SERVER_HOST = "192.168.1.100";
 const char* HELMET_ID = "CASCO-001";
 ```
 
-`SERVER_HOST` debe ser la IPv4 de la computadora donde corre Bun, por ejemplo `192.168.1.25`.
-
-El ESP32 y la computadora deben estar conectados a la misma red Wi-Fi.
+`SERVER_HOST` debe ser la IPv4 de la computadora donde corre Bun. El ESP32 y la computadora deben estar en la misma red Wi-Fi.
 
 ## 5. Bibliotecas de Arduino
 
-Instala desde el Library Manager:
+Instala desde Library Manager:
 
 - Adafruit MPU6050
 - Adafruit Unified Sensor
@@ -63,42 +53,19 @@ Instala desde el Library Manager:
 
 ## 6. Primer encendido
 
-Primero arranca el servidor en la computadora. Después conecta el ESP32 por USB y abre el Serial Monitor a `115200` baudios.
-
-El ESP32 debería mostrar:
-
-```text
-WiFi conectado. IP del ESP32: ...
-MPU6050 listo.
-WebSocket conectado al servidor.
-```
-
-También enviará JSON de telemetría por WebSocket.
+Primero arranca el servidor. Después conecta el ESP32 por USB y abre el Serial Monitor a `115200` baudios. Debes ver Wi-Fi conectado, MPU6050 listo y WebSocket conectado.
 
 ## 7. Hardware del primer prototipo
 
-MPU6050:
+MPU6050: VCC → 3.3 V, GND → GND, SDA → GPIO 21, SCL → GPIO 22.
 
-- VCC → 3.3 V
-- GND → GND
-- SDA → GPIO 21
-- SCL → GPIO 22
+MQ-2: salida analógica → GPIO 34, GND → GND, alimentación según el módulo utilizado.
 
-MQ-2:
-
-- salida analógica → GPIO 34
-- GND → GND
-- alimentación según el módulo utilizado
-
-Buzzer de 9–12 V:
-
-- NO conectarlo directamente al GPIO del ESP32.
-- Usar transistor/MOSFET y una alimentación adecuada para el buzzer.
-- GPIO 25 controla la etapa de conmutación.
+Buzzer de 9–12 V: NO conectarlo directamente al GPIO. Usa transistor/MOSFET y una alimentación adecuada. GPIO 25 controla la etapa de conmutación.
 
 ## Importante sobre MQ-2
 
-El valor `gas` enviado por el firmware es la lectura ADC cruda. No representa directamente ppm de propano o butano. Primero hay que caracterizar y calibrar el sensor real, por lo que los umbrales actuales son experimentales.
+El valor `gas` enviado por el firmware es la lectura ADC cruda. No representa directamente ppm de propano o butano. Primero hay que caracterizar y calibrar el sensor real; los umbrales actuales son experimentales.
 
 ## Arquitectura
 
