@@ -34,7 +34,30 @@ export default function Dashboard() {
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const simulationStepRef = useRef(0);
   const lastSimEventRef = useRef(0);
+  const spokenEventRef = useRef<string>("");
   const simulationWindowIdRef = useRef(`DASH-${Date.now()}`);
+
+  useEffect(() => {
+    const speak = (event: SafetyEvent) => {
+      if (!("speechSynthesis" in window)) return;
+      const key = event.helmetId + "-" + event.timestamp + "-" + event.type;
+      if (spokenEventRef.current === key) return;
+      spokenEventRef.current = key;
+      const phrases: Record<string, string> = {
+        POSSIBLE_FALL: "Posible caída detectada",
+        GAS_DETECTED: event.risk === "HIGH" ? "Concentración crítica de gas detectada" : "Concentración elevada de gas detectada",
+        DISCONNECTED: "Casco desconectado",
+        NORMAL: "Alerta normalizada",
+      };
+      const utterance = new SpeechSynthesisUtterance(phrases[event.type] ?? event.message ?? "Alerta de seguridad detectada");
+      utterance.lang = "es-GT";
+      utterance.rate = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    };
+    (window as Window & { __speakHelmetAlert?: (event: SafetyEvent) => void }).__speakHelmetAlert = speak;
+    return () => { delete (window as Window & { __speakHelmetAlert?: (event: SafetyEvent) => void }).__speakHelmetAlert; };
+  }, []);
 
   useEffect(() => {
     let socket: WebSocket | undefined;
@@ -68,6 +91,7 @@ export default function Dashboard() {
           if (payload.type === "event") {
             const event = payload.data as SafetyEvent;
             setEvents((current) => [{ ...event, id: `${event.helmetId}-${event.timestamp}` }, ...current].slice(0, 8));
+            (window as Window & { __speakHelmetAlert?: (event: SafetyEvent) => void }).__speakHelmetAlert?.(event);
           }
         } catch {
           // Ignorar mensajes corruptos.
