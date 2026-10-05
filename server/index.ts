@@ -285,16 +285,23 @@ setInterval(() => {
   const now = Date.now();
   for (const [helmetId, seen] of lastSeen) {
     if (now - seen > THRESHOLDS.disconnectMs) {
-      broadcast({
-        type: "event",
-        data: {
-          helmetId,
-          timestamp: now,
-          type: "DISCONNECTED",
-          risk: "HIGH",
-          message: "No se recibió telemetría dentro del intervalo esperado.",
-        } satisfies SafetyEvent,
-      });
+      const event = {
+        helmetId,
+        timestamp: now,
+        type: "DISCONNECTED",
+        risk: "HIGH",
+        message: "No se recibió telemetría dentro del intervalo esperado.",
+      } satisfies SafetyEvent;
+
+      broadcast({ type: "event", data: event });
+
+      const telemetry = lastTelemetry.get(helmetId);
+      if (telemetry) {
+        void sendTelegramAlert(event, telemetry).catch((error) =>
+          console.error("Telegram disconnect notification error:", error),
+        );
+      }
+
       lastSeen.delete(helmetId);
     }
   }
