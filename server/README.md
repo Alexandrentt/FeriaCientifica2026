@@ -1,130 +1,266 @@
-# Servidor local del sistema de cascos
-
-Este servidor recibe telemetría de los ESP32 mediante WebSocket y ejecuta primero las reglas deterministas de seguridad. La IA local se integrará después sobre los eventos/ventanas de datos; no reemplaza las reglas críticas.
-
-## 1. Instalar Bun
-
-Instala Bun en la computadora que funcionará como servidor y verifica:
-
-```bash
-bun --version
-```
-
-## 2. Instalar dependencias del proyecto
-
-Desde la raíz del repositorio:
-
-```bash
-bun install
-```
-
-## 3. Arrancar el servidor
-
-Desde la raíz del repositorio usa directamente:
-
-```bash
-bun run server/index.ts
-```
-
-Por defecto escucha en `http://localhost:8787`, WebSocket `ws://localhost:8787/ws` y estado `http://localhost:8787/health`.
-
-## 4. Configurar el ESP32
-
-Abre `hardware/esp32_helmet/esp32_helmet.ino` y cambia:
-
-```cpp
-const char* WIFI_SSID = "TU_WIFI";
-const char* WIFI_PASSWORD = "TU_PASSWORD";
-const char* SERVER_HOST = "192.168.1.100";
-const char* HELMET_ID = "CASCO-001";
-```
-
-`SERVER_HOST` debe ser la IPv4 de la computadora donde corre Bun. El ESP32 y la computadora deben estar en la misma red Wi-Fi.
-
-## 5. Bibliotecas de Arduino
-
-Instala desde Library Manager:
-
-- Adafruit MPU6050
-- Adafruit Unified Sensor
-- WebSockets by Markus Sattler
-
-`WiFi.h` y `Wire.h` vienen con el core de ESP32.
-
-## 6. Primer encendido
-
-Primero arranca el servidor. Después conecta el ESP32 por USB y abre el Serial Monitor a `115200` baudios. Debes ver Wi-Fi conectado, MPU6050 listo y WebSocket conectado.
-
-## 7. Hardware del primer prototipo
-
-MPU6050: VCC → 3.3 V, GND → GND, SDA → GPIO 21, SCL → GPIO 22.
-
-MQ-2: salida analógica → GPIO 34, GND → GND, alimentación según el módulo utilizado.
-
-Buzzer de 9–12 V: NO conectarlo directamente al GPIO. Usa transistor/MOSFET y una alimentación adecuada. GPIO 25 controla la etapa de conmutación.
-
-## Importante sobre MQ-2
-
-El valor `gas` enviado por el firmware es la lectura ADC cruda. No representa directamente ppm de propano o butano. Primero hay que caracterizar y calibrar el sensor real; los umbrales actuales son experimentales.
+# Sistema IoT de seguridad para cascos
 
 ## Arquitectura
 
-```text
-ESP32 + MPU6050 + MQ-2
-          |
-          | Wi-Fi / WebSocket
-          v
-    server/index.ts
-          |
-          +--> reglas de seguridad
-          |
-          +--> eventos
-          |
-          +--> futura IA local
-          |
-          v
-      dashboard React
+```
+ESP32 + MPU6050 + MQ-2 + buzzer
+             |
+          Wi-Fi
+             |
+       Bun / WebSocket
+       /     |       \
+ reglas   dataset   Telegram
+             |
+        React dashboard
+             |
+       futura IA local
 ```
 
+## 1. Requisitos
 
-## Configuración Wi-Fi del ESP32
+- Bun.
+- Arduino IDE.
+- Core Arduino-ESP32.
+- Librerías:
+  - Adafruit MPU6050
+  - Adafruit Unified Sensor
+  - WebSockets by Markus Sattler
 
-El firmware actual usa la memoria NVS del ESP32 mediante `Preferences`. Ya no es necesario recompilar el firmware cada vez que cambie la red o la IP del servidor.
+## 2. Servidor
 
-En el primer arranque:
+Desde la raíz:
 
-1. El ESP32 crea la red Wi-Fi `CASCO-SETUP`.
-2. Conéctate a esa red desde el teléfono o la computadora.
-3. Abre `http://192.168.4.1`.
-4. Introduce SSID, contraseña, IP/host del servidor, puerto `8787` e ID del casco.
-5. Pulsa **Guardar y reiniciar**.
+```bash
+bun install
+bun run server/index.ts
+```
 
-La configuración queda guardada en la memoria no volátil del ESP32. En los siguientes arranques intentará conectarse automáticamente.
+Comprobar:
 
-Si la red configurada deja de existir, el ESP32 vuelve al modo `CASCO-SETUP` después de un intento de conexión fallido.
+```text
+http://localhost:8787/health
+```
 
-> El ESP32 y la computadora deben estar en la misma red local. El host del servidor debe ser la IPv4 de la computadora en esa red, no `localhost`.
+Dashboard, en otra terminal:
 
+```bash
+bun run dev
+```
 
-## Dataset para IA
+Servidor:
+- HTTP: 8787
+- WebSocket: ws://IP-DE-LA-PC:8787/ws
+- Dataset: server/data/helmet_dataset.jsonl
 
-La telemetría real se guarda en `server/data/helmet_dataset.jsonl` en formato JSON Lines. El archivo no se sube a GitHub porque puede crecer mucho.
+## 3. Telegram
 
-Para generar datos sintéticos de entrenamiento:
+Crea un bot con @BotFather y obtén el token y el chat ID.
+
+Crea `.env` en la raíz:
+
+```env
+TELEGRAM_BOT_TOKEN=TU_TOKEN
+TELEGRAM_CHAT_ID=TU_CHAT_ID
+PORT=8787
+```
+
+No subas estas credenciales a GitHub. Reinicia el servidor después de modificarlas.
+
+## 4. Cargar el ESP32
+
+Archivo:
+
+```text
+hardware/esp32_helmet/esp32_helmet.ino
+```
+
+En Arduino IDE:
+
+1. Selecciona la placa ESP32.
+2. Selecciona el puerto COM.
+3. Instala las librerías indicadas.
+4. Compila.
+5. Sube.
+6. Serial Monitor a 115200.
+
+### Primera configuración
+
+El ESP32 crea:
+
+```text
+CASCO-SETUP
+```
+
+Conéctate y abre:
+
+```text
+http://192.168.4.1
+```
+
+Introduce:
+- SSID.
+- Contraseña.
+- IP de la computadora que ejecuta Bun.
+- Puerto 8787.
+- ID, por ejemplo CASCO-001.
+
+La configuración se guarda con Preferences/NVS. No hay que recompilar para cambiar estos valores.
+
+## 5. Cableado
+
+### MPU6050
+
+```text
+MPU6050       ESP32
+VCC     --->   3V3
+GND     --->   GND
+SDA     --->   GPIO21
+SCL     --->   GPIO22
+```
+
+El MPU6050 ya contiene acelerómetro y giroscopio.
+
+### MQ-2
+
+GPIO34 es ADC1 y entrada solamente. El firmware lo usa como entrada analógica.
+
+```text
+MQ-2 AO  ---> GPIO34
+MQ-2 GND ---> GND
+MQ-2 VCC ---> alimentación según el módulo
+```
+
+**No conectes AO a ciegas.** Muchos módulos MQ-2 trabajan con 5 V y la salida analógica puede superar el nivel seguro de entrada del ESP32. Verifica el módulo y mide AO; si puede superar el rango seguro, usa un divisor de tensión. GPIO34 es una entrada ADC, no una salida.
+
+### Buzzer 9–12 V
+
+**Nunca conectarlo directamente al GPIO25.**
+
+```text
+                 +9/12 V
+                    |
+                  BUZZER
+                    |
+                 MOSFET
+                    |
+                   GND
+
+GPIO25 -- resistencia -- GATE
+ESP32 GND ------------- GND
+```
+
+GPIO25 solamente controla la etapa de potencia.
+
+## 6. Alarma local del casco
+
+Las alarmas críticas se ejecutan dentro del ESP32 para que el aviso no dependa de Wi-Fi, Bun, Telegram ni IA.
+
+Umbrales iniciales:
+
+- MQ-2 >= 700: alarma crítica.
+- MQ-2 >= 520: aviso preventivo.
+- aceleración >= 22 m/s²: impacto.
+- giroscopio >= 280 °/s: impacto.
+- después de impacto + baja actividad ~1.2 s: posible caída.
+
+El buzzer es **no bloqueante**: usa `millis()` y el ESP32 puede emitir el patrón mientras sigue leyendo sensores y enviando telemetría a 5 Hz.
+
+El servidor también vuelve a evaluar las señales con una ventana temporal. La IA futura será complementaria, no el único mecanismo de alarma.
+
+## 7. Dataset
+
+Se guarda en:
+
+```text
+server/data/helmet_dataset.jsonl
+```
+
+No se sube a GitHub.
+
+Las muestras incluyen acelerómetro, giroscopio, MQ-2, batería, casco, timestamp, etiqueta, fuente y `windowId`.
+
+Generar 10 000 muestras:
 
 ```bash
 bun run server/generateSyntheticDataset.ts 10000
 ```
 
-Cada línea contiene una muestra etiquetada como `NORMAL`, `WALKING`, `IMPACT`, `POSSIBLE_FALL`, `GAS_WARNING` o `GAS_CRITICAL`.
+Generar 100 000:
 
-Esto sirve para desarrollar el pipeline de IA; antes de presentar resultados como válidos debemos sustituir/mezclar estos datos con mediciones reales del MPU6050 y MQ-2.
+```bash
+bun run server/generateSyntheticDataset.ts 100000
+```
 
-## Telegram
+Las muestras sintéticas se agrupan en ventanas de 10 s a 5 Hz y contienen secuencias de NORMAL, WALKING, IMPACT, POSSIBLE_FALL, GAS_WARNING y GAS_CRITICAL.
 
-El servidor soporta alertas mediante un bot de Telegram. Copia `server/.env.example` a un archivo de variables de entorno local y configura:
+## 8. Simulador
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+El simulador del dashboard usa el mismo pipeline cuando el servidor está conectado:
 
-Las credenciales no deben entrar al repositorio. El servidor aplica un intervalo de 30 segundos por casco/tipo de alerta para evitar spam.
+```text
+Dashboard
+   |
+   | source: synthetic
+   v
+Bun
+   |
+   +--> reglas
+   +--> dataset
+   +--> Telegram
+   +--> dashboard
+```
+
+Por tanto, los datos de las pruebas del dashboard pueden terminar en el mismo JSONL que los datos reales.
+
+## 9. Prueba completa
+
+Terminal 1:
+
+```bash
+bun run server/index.ts
+```
+
+Terminal 2:
+
+```bash
+bun run dev
+```
+
+Luego:
+
+1. Configura Telegram.
+2. Carga el firmware.
+3. Conecta el ESP32 a `CASCO-SETUP`.
+4. Configura Wi-Fi, IP del servidor, puerto e ID.
+5. Comprueba `WebSocket conectado al servidor.` en Serial Monitor.
+6. Abre el dashboard.
+7. Prueba el simulador.
+8. Revisa `server/data/helmet_dataset.jsonl`.
+9. Comprueba Telegram.
+10. Calibra los umbrales con sensores reales antes de presentar resultados.
+
+## 10. Advertencias
+
+- No buzzer 9–12 V directo al GPIO25.
+- No señales de 5 V directamente a GPIO del ESP32.
+- No conectar AO del MQ-2 sin verificar su tensión.
+- No poner el token de Telegram en GitHub.
+- El ESP32 debe usar la IP LAN de la computadora, no `localhost`.
+- MQ-2 entrega una señal experimental; no debe presentarse como instrumento certificado de ppm.
+- La IA no debe ser el único mecanismo de alarma.
+
+## 11. IA futura
+
+```text
+sensores
+   |
+reglas deterministas
+   |
+ventana temporal
+   |
+ML / IA local
+   |
+clasificación + confianza + explicación
+   |
+dashboard + Telegram
+```
