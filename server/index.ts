@@ -1,4 +1,4 @@
-import { appendDatasetSample } from "./dataset";
+import { appendDatasetSample, type DatasetLabel } from "./dataset";
 import { sendTelegramAlert } from "./telegram";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -12,6 +12,8 @@ type Telemetry = {
   gas: number;
   battery: number;
   source?: "real" | "synthetic";
+  windowId?: string;
+  datasetLabel?: DatasetLabel;
 };
 
 type SafetyEvent = {
@@ -162,7 +164,8 @@ function validateTelemetry(value: unknown): value is Telemetry {
     typeof data.gyro.x === "number" &&
     typeof data.gyro.y === "number" &&
     typeof data.gyro.z === "number" &&
-    (data.source === undefined || data.source === "real" || data.source === "synthetic")
+    (data.source === undefined || data.source === "real" || data.source === "synthetic") &&
+    (data.datasetLabel === undefined || ["NORMAL", "WALKING", "IMPACT", "POSSIBLE_FALL", "GAS_WARNING", "GAS_CRITICAL"].includes(data.datasetLabel))
   );
 }
 
@@ -178,6 +181,7 @@ async function processTelemetry(value: Telemetry) {
   await appendDatasetSample({
     source: value.source ?? "real",
     label:
+      value.source === "synthetic" && value.datasetLabel ? value.datasetLabel :
       event?.type === "POSSIBLE_FALL" ? "POSSIBLE_FALL" :
       event?.type === "GAS_DETECTED" && event.risk === "HIGH" ? "GAS_CRITICAL" :
       event?.type === "GAS_DETECTED" ? "GAS_WARNING" : "NORMAL",
@@ -187,6 +191,7 @@ async function processTelemetry(value: Telemetry) {
     gyro: value.gyro,
     gas: value.gas,
     battery: value.battery,
+    windowId: value.windowId,
   });
 
   if (event) {
