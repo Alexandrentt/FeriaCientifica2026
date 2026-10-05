@@ -19,9 +19,17 @@ type SafetyEvent = {
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
+const lastAlert = new Map<string, number>();
+const ALERT_COOLDOWN_MS = 30_000;
 
 export async function sendTelegramAlert(event: SafetyEvent, telemetry: Telemetry) {
   if (!token || !chatId) return;
+
+  const alertKey = `${event.helmetId}:${event.type}`;
+  const now = Date.now();
+  const previous = lastAlert.get(alertKey) ?? 0;
+  if (now - previous < ALERT_COOLDOWN_MS) return;
+  lastAlert.set(alertKey, now);
 
   const time = new Date(event.timestamp).toLocaleString("es-GT", {
     timeZone: "America/Guatemala",
