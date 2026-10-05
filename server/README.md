@@ -104,3 +104,27 @@ La configuración queda guardada en la memoria no volátil del ESP32. En los sig
 Si la red configurada deja de existir, el ESP32 vuelve al modo `CASCO-SETUP` después de un intento de conexión fallido.
 
 > El ESP32 y la computadora deben estar en la misma red local. El host del servidor debe ser la IPv4 de la computadora en esa red, no `localhost`.
+
+
+## Dataset para IA
+
+La telemetría real se guarda en `server/data/helmet_dataset.jsonl` en formato JSON Lines. El archivo no se sube a GitHub porque puede crecer mucho.
+
+Para generar datos sintéticos de entrenamiento:
+
+```bash
+bun run server/generateSyntheticDataset.ts 10000
+```
+
+Cada línea contiene una muestra etiquetada como `NORMAL`, `WALKING`, `IMPACT`, `POSSIBLE_FALL`, `GAS_WARNING` o `GAS_CRITICAL`.
+
+Esto sirve para desarrollar el pipeline de IA; antes de presentar resultados como válidos debemos sustituir/mezclar estos datos con mediciones reales del MPU6050 y MQ-2.
+
+## Telegram
+
+El servidor soporta alertas mediante un bot de Telegram. Copia `server/.env.example` a un archivo de variables de entorno local y configura:
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+Las credenciales no deben entrar al repositorio. El servidor aplica un intervalo de 30 segundos por casco/tipo de alerta para evitar spam.
