@@ -34,6 +34,7 @@ export default function Dashboard() {
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const simulationStepRef = useRef(0);
   const lastSimEventRef = useRef(0);
+  const simulationWindowIdRef = useRef(`DASH-${Date.now()}`);
 
   useEffect(() => {
     let socket: WebSocket | undefined;
@@ -127,7 +128,17 @@ export default function Dashboard() {
 
         // Cuando hay servidor, el simulador entra por el mismo pipeline y se guarda como synthetic.
         if (connected && item.helmetId === selectedId && socketRef.current?.readyState === WebSocket.OPEN) {
-          socketRef.current.send(JSON.stringify({ ...next, source: "synthetic" }));
+          const datasetLabel = simulation === "POSSIBLE_FALL"
+            ? (step % 12 < 2 ? "IMPACT" : "POSSIBLE_FALL")
+            : simulation === "GAS_DETECTED"
+              ? "GAS_CRITICAL"
+              : "NORMAL";
+          socketRef.current.send(JSON.stringify({
+            ...next,
+            source: "synthetic",
+            windowId: simulationWindowIdRef.current,
+            datasetLabel,
+          }));
         }
 
         return next;
@@ -139,6 +150,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     simulationStepRef.current = 0;
+    simulationWindowIdRef.current = `DASH-${Date.now()}`;
   }, [simulation, selectedId]);
 
   const snapshots = useMemo<HelmetSnapshot[]>(() => telemetry.map((item) => {
