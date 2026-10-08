@@ -8,7 +8,7 @@ const moduleInfo: Record<ModuleId, { label: string; description: string }> = {
   MCU_WIFI: { label: "Control + Wi-Fi", description: "Controlador del módulo, enlace inalámbrico y envío de telemetría al servidor local." },
   MPU6050: { label: "MPU6050", description: "Acelerómetro y giroscopio para movimiento e impactos." },
   "MQ-2": { label: "MQ-2", description: "Sensor experimental de presencia de gas combustible." },
-  BUZZER: { label: "Buzzer", description: "Alerta sonora local controlada por el ESP32." },
+  BUZZER: { label: "Buzzer", description: "Alerta sonora local controlada por el Arduino UNO R4 WiFi." },
   BATTERY: { label: "Alimentación", description: "Fuente de energía del módulo; el porcentaje mostrado es actualmente un dato de prueba." },
 };
 
