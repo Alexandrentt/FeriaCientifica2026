@@ -125,7 +125,9 @@ export function createSimulatedTelemetry(previous: HelmetTelemetry, forcedEvent?
 }
 
 export function createInitialTelemetry(): HelmetTelemetry[] {
-  return workers.map(([helmetId, workerName], index) => ({
+  return [];
+  
+  /* return workers.map(([helmetId, workerName], index) => ({
     helmetId,
     workerName,
     timestamp: Date.now(),
@@ -133,5 +135,5 @@ export function createInitialTelemetry(): HelmetTelemetry[] {
     gyro: { x: 0, y: 0, z: 0 },
     gas: 330 + index * 24,
     battery: 76 + index * 3,
-  }));
+  })); */
 }
