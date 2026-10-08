@@ -163,16 +163,6 @@ export default function Dashboard() {
           lastSimEventRef.current = Date.now();
           const eventType = simulation === "POSSIBLE_FALL" ? "POSSIBLE_FALL" : result.event;
           if (eventType !== "NORMAL") {
-            setEvents((currentEvents) => [{
-              id: `${next.helmetId}-sim-${next.timestamp}`,
-              helmetId: next.helmetId,
-              timestamp: next.timestamp,
-              type: eventType,
-              risk: "HIGH",
-              message: eventType === "GAS_DETECTED"
-                ? "Concentración elevada de gas combustible"
-                : "Impacto y patrón compatible con una posible caída",
-            }, ...currentEvents].slice(0, 8));
             const simulatedEvent: SafetyEvent = {
               id: `${next.helmetId}-sim-alert-${next.timestamp}`,
               helmetId: next.helmetId,
@@ -181,6 +171,7 @@ export default function Dashboard() {
               risk: "HIGH",
               message: eventType === "GAS_DETECTED" ? "Concentración elevada de gas combustible" : "Impacto y patrón compatible con una posible caída",
             };
+            setEvents((currentEvents) => [simulatedEvent, ...currentEvents].slice(0, 8));
             (window as Window & { __speakHelmetAlert?: (event: SafetyEvent) => void }).__speakHelmetAlert?.(simulatedEvent);
           }
         }
