@@ -17,7 +17,7 @@ Adafruit_MPU6050 mpu;
 
 const int pinMQ2 = A0;
 const int pinBuzzer = 8;
-const int UMBRAL_BUZZER = 700;
+const int UMBRAL_BUZZER = 300;
 
 bool mpuDisponible = false;
 
