@@ -1,32 +1,17 @@
-# Sistema IoT de seguridad para cascos
+# EPI 4.0 — Servidor de telemetría
 
-## Arquitectura
+El servidor recibe datos del **Arduino UNO R4 WiFi** por UDP, procesa reglas de seguridad, guarda muestras y retransmite telemetría al Dashboard por WebSocket.
 
-```
-ESP32 + MPU6050 + MQ-2 + buzzer
-             |
-          Wi-Fi
-             |
-       Bun / WebSocket
-       /     |       \
- reglas   dataset   Telegram
-             |
-        React dashboard
-             |
-       futura IA local
-```
+## Puertos
 
-## 1. Requisitos
+| Servicio | Puerto |
+|---|---:|
+| Dashboard/Vite | 5173 (normalmente) |
+| HTTP Bun | 8787 |
+| WebSocket Bun | 8787/ws |
+| UDP Arduino | 5005 |
 
-- Bun.
-- Arduino IDE.
-- Core Arduino-ESP32.
-- Librerías:
-  - Adafruit MPU6050
-  - Adafruit Unified Sensor
-  - WebSockets by Markus Sattler
-
-## 2. Servidor
+## Arrancar
 
 Desde la raíz:
 
@@ -35,232 +20,115 @@ bun install
 bun run server/index.ts
 ```
 
-Comprobar:
+Debe aparecer:
 
-```text
-http://localhost:8787/health
+```
+Helmet telemetry server running at http://localhost:8787
+WebSocket endpoint: ws://localhost:8787/ws
+UDP telemetry listening on 0.0.0.0:5005
 ```
 
-Dashboard, en otra terminal:
+En otra terminal:
 
 ```bash
 bun run dev
 ```
 
-Servidor:
-- HTTP: 8787
-- WebSocket: ws://IP-DE-LA-PC:8787/ws
-- Dataset: server/data/helmet_dataset.jsonl
+Health check:
 
-## 3. Telegram
+```
+http://localhost:8787/health
+```
 
-Crea un bot con @BotFather y obtén el token y el chat ID.
+## Variables de entorno
 
-Crea `.env` en la raíz:
+En la raíz:
 
 ```env
+PORT=8787
+UDP_PORT=5005
+HELMET_ID=CASCO-001
 TELEGRAM_BOT_TOKEN=TU_TOKEN
 TELEGRAM_CHAT_ID=TU_CHAT_ID
-PORT=8787
 ```
 
-No subas estas credenciales a GitHub. Reinicia el servidor después de modificarlas.
+Nunca subas el token de Telegram a GitHub.
 
-## 4. Cargar el ESP32
+## UDP del Arduino
 
-Archivo:
+El Arduino envía:
 
-```text
-hardware/esp32_helmet/esp32_helmet.ino
+```
+gas,ax,ay,az,gx,gy,gz
 ```
 
-En Arduino IDE:
+Ejemplo:
 
-1. Selecciona la placa ESP32.
-2. Selecciona el puerto COM.
-3. Instala las librerías indicadas.
-4. Compila.
-5. Sube.
-6. Serial Monitor a 115200.
-
-### Primera configuración
-
-El ESP32 crea:
-
-```text
-CASCO-SETUP
+```
+65,0.12,-0.05,9.81,0.01,0.00,0.02
 ```
 
-Conéctate y abre:
+El servidor convierte el giroscopio de rad/s a °/s porque la librería Adafruit MPU6050 entrega esa magnitud en rad/s.
 
-```text
-http://192.168.4.1
-```
+El paquete UDP no contiene batería, por lo que actualmente se asigna temporalmente `battery: 100`.
 
-Introduce:
-- SSID.
-- Contraseña.
-- IP de la computadora que ejecuta Bun.
-- Puerto 8787.
-- ID, por ejemplo CASCO-001.
-
-La configuración se guarda con Preferences/NVS. No hay que recompilar para cambiar estos valores.
-
-## 5. Cableado
-
-### MPU6050
-
-```text
-MPU6050       ESP32
-VCC     --->   3V3
-GND     --->   GND
-SDA     --->   GPIO21
-SCL     --->   GPIO22
-```
-
-El MPU6050 ya contiene acelerómetro y giroscopio.
-
-### MQ-2
-
-GPIO34 es ADC1 y entrada solamente. El firmware lo usa como entrada analógica.
-
-```text
-MQ-2 AO  ---> GPIO34
-MQ-2 GND ---> GND
-MQ-2 VCC ---> alimentación según el módulo
-```
-
-**No conectes AO a ciegas.** Muchos módulos MQ-2 trabajan con 5 V y la salida analógica puede superar el nivel seguro de entrada del ESP32. Verifica el módulo y mide AO; si puede superar el rango seguro, usa un divisor de tensión. GPIO34 es una entrada ADC, no una salida.
-
-### Buzzer 9–12 V
-
-**Nunca conectarlo directamente al GPIO25.**
-
-```text
-                 +9/12 V
-                    |
-                  BUZZER
-                    |
-                 MOSFET
-                    |
-                   GND
-
-GPIO25 -- resistencia -- GATE
-ESP32 GND ------------- GND
-```
-
-GPIO25 solamente controla la etapa de potencia.
-
-## 6. Alarma local del casco
-
-Las alarmas críticas se ejecutan dentro del ESP32 para que el aviso no dependa de Wi-Fi, Bun, Telegram ni IA.
+## Reglas
 
 Umbrales iniciales:
 
-- MQ-2 >= 700: alarma crítica.
-- MQ-2 >= 520: aviso preventivo.
-- aceleración >= 22 m/s²: impacto.
-- giroscopio >= 280 °/s: impacto.
-- después de impacto + baja actividad ~1.2 s: posible caída.
+- gas >= 520 → advertencia;
+- gas >= 700 → crítico;
+- aceleración >= 22 m/s² → impacto;
+- giroscopio >= 280 °/s → impacto;
+- impacto + baja actividad → posible caída;
+- sin telemetría durante 5 s → desconexión.
 
-El buzzer es **no bloqueante**: usa `millis()` y el ESP32 puede emitir el patrón mientras sigue leyendo sensores y enviando telemetría a 5 Hz.
+Estos valores son experimentales y deben calibrarse.
 
-El servidor también vuelve a evaluar las señales con una ventana temporal. La IA futura será complementaria, no el único mecanismo de alarma.
+## Telegram
 
-## 7. Dataset
+Las alertas generadas por el servidor se envían automáticamente mediante el bot configurado en `.env`.
 
-Se guarda en:
+Existe un cooldown para evitar una tormenta de mensajes cuando un sensor permanece por encima del umbral.
 
-```text
+## Dataset
+
+Las muestras se escriben en:
+
+```
 server/data/helmet_dataset.jsonl
 ```
 
-No se sube a GitHub.
+No se deben subir credenciales ni datos locales de prueba a GitHub.
 
-Las muestras incluyen acelerómetro, giroscopio, MQ-2, batería, casco, timestamp, etiqueta, fuente y `windowId`.
-
-Generar 10 000 muestras:
+Generación sintética:
 
 ```bash
 bun run server/generateSyntheticDataset.ts 10000
 ```
 
-Generar 100 000:
+## Firmware
 
-```bash
-bun run server/generateSyntheticDataset.ts 100000
+Firmware real:
+
+```
+hardware/arduino_r4_wifi/arduino_r4_wifi.ino
 ```
 
-Las muestras sintéticas se agrupan en ventanas de 10 s a 5 Hz y contienen secuencias de NORMAL, WALKING, IMPACT, POSSIBLE_FALL, GAS_WARNING y GAS_CRITICAL.
+Firmware de simulación:
 
-## 8. Simulador
-
-El simulador del dashboard permite probar los estados Normal, Gas elevado y Posible caída. También incluye el botón **Simular llamada a ambulancia**: solo muestra un estado de emergencia y anuncia el mensaje con voz del navegador; **no realiza una llamada real ni contacta servicios de emergencia**.\n\nEl simulador del dashboard usa el mismo pipeline cuando el servidor está conectado:
-
-```text
-Dashboard
-   |
-   | source: synthetic
-   v
-Bun
-   |
-   +--> reglas
-   +--> dataset
-   +--> Telegram
-   +--> dashboard
+```
+hardware/arduino_r4_wifi/arduino_r4_wifi_simulacion.ino
 ```
 
-Por tanto, los datos de las pruebas del dashboard pueden terminar en el mismo JSONL que los datos reales.
+La documentación completa de red, Arduino IDE, firewall, cableado, Dashboard, Telegram y pruebas está en el [README principal](../README.md).
 
-## 9. Prueba completa
+## Seguridad
 
-Terminal 1:
-
-```bash
-bun run server/index.ts
-```
-
-Terminal 2:
-
-```bash
-bun run dev
-```
-
-Luego:
-
-1. Configura Telegram.
-2. Carga el firmware.
-3. Conecta el ESP32 a `CASCO-SETUP`.
-4. Configura Wi-Fi, IP del servidor, puerto e ID.
-5. Comprueba `WebSocket conectado al servidor.` en Serial Monitor.
-6. Abre el dashboard.
-7. Prueba el simulador.
-8. Revisa `server/data/helmet_dataset.jsonl`.
-9. Comprueba Telegram.
-10. Calibra los umbrales con sensores reales antes de presentar resultados.
-
-## 10. Advertencias
-
-- No buzzer 9–12 V directo al GPIO25.
-- No señales de 5 V directamente a GPIO del ESP32.
-- No conectar AO del MQ-2 sin verificar su tensión.
-- No poner el token de Telegram en GitHub.
-- El ESP32 debe usar la IP LAN de la computadora, no `localhost`.
-- MQ-2 entrega una señal experimental; no debe presentarse como instrumento certificado de ppm.
-- La IA no debe ser el único mecanismo de alarma.
-
-## 11. IA futura
-
-```text
-sensores
-   |
-reglas deterministas
-   |
-ventana temporal
-   |
-ML / IA local
-   |
-clasificación + confianza + explicación
-   |
-dashboard + Telegram
-```
+- No usar `localhost` como IP destino en el Arduino.
+- PC y Arduino deben estar en la misma red.
+- Permitir UDP 5005 en el firewall si es necesario.
+- No poner contraseñas reales en sketches públicos.
+- No conectar un buzzer de potencia directamente a un GPIO.
+- No asumir que el AO de un MQ-2 es seguro para una entrada analógica sin verificar su tensión.
+- La IA futura no reemplaza las reglas deterministas de seguridad.
