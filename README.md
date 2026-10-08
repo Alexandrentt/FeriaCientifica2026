@@ -293,11 +293,11 @@ When using convex, make sure:
 - NEVER have return type validators.
 
 
-# EPI 4.0 — Casco de seguridad inteligente
+# EPI 4.0 — Sistema de monitoreo inteligente
 
-## Arquitectura real de la demostración
+## Arquitectura de la demostración
 
-El prototipo actual usa **Arduino UNO R4 WiFi (WiFiS3)**, no ESP32.
+El prototipo utiliza **Arduino UNO R4 WiFi**, sensores físicos y un servidor local en la PC.
 
 ```
 Arduino UNO R4 WiFi
@@ -310,7 +310,6 @@ Arduino UNO R4 WiFi
 PC / Bun
   ├─ reglas de seguridad
   ├─ dataset JSONL
-  ├─ Telegram
   └─ WebSocket :8787
        │
        ▼
@@ -319,39 +318,73 @@ Dashboard React
   ├─ vista 3D
   ├─ alertas
   ├─ voz
-  └─ respuesta automática simulada
+  └─ respuesta de emergencia simulada
 ```
 
-## 1. Preparar la PC
+**Importante:** para la feria, el flujo principal es **local**. El Arduino no se conecta directamente a Vercel. El Arduino envía los datos a la PC mediante UDP y la PC los entrega al Dashboard mediante WebSocket.
 
-Requisitos:
+---
 
-- Bun.
-- Arduino IDE.
-- Arduino UNO R4 WiFi.
-- PC y Arduino conectados al **mismo hotspot del teléfono**.
+## 1. Qué necesitas
 
-Instalar dependencias del proyecto:
+En la PC:
 
-```bash
+- **Git**
+- **Bun**
+- **Arduino IDE**
+- **Arduino UNO R4 WiFi**
+
+Para la prueba física:
+
+- Arduino UNO R4 WiFi
+- MPU6050
+- MQ-2
+- buzzer activo
+- cable USB del Arduino
+- teléfono usado como hotspot Wi-Fi
+
+La **PC y el Arduino deben estar conectados al mismo hotspot del teléfono**.
+
+---
+
+## 2. Descargar y preparar el proyecto
+
+Si todavía no tienes el proyecto en la PC:
+
+```powershell
+cd $HOME\Desktop
+git clone https://github.com/Alexandrentt/FeriaCientifica2026.git
+cd FeriaCientifica2026
+```
+
+Instala las dependencias:
+
+```powershell
 bun install
 ```
 
-## 2. Configurar el servidor
+Si ya tienes el proyecto, simplemente entra en su carpeta y ejecuta:
 
-En la raíz del proyecto:
+```powershell
+git pull origin main
+bun install
+```
 
-```bash
+---
+
+## 3. Levantar primero el servidor
+
+Abre una terminal de PowerShell en la carpeta del proyecto.
+
+Ejecuta:
+
+```powershell
 bun run server/index.ts
 ```
 
-El servidor usa:
+**No cierres esta terminal.** El servidor debe permanecer ejecutándose durante la demostración.
 
-- HTTP: `8787`
-- WebSocket: `8787/ws`
-- UDP de sensores: `5005`
-
-Debe aparecer algo parecido a:
+Debe mostrar algo similar a:
 
 ```
 Helmet telemetry server running at http://localhost:8787
@@ -359,264 +392,281 @@ WebSocket endpoint: ws://localhost:8787/ws
 UDP telemetry listening on 0.0.0.0:5005
 ```
 
-Comprobar desde la PC:
+Comprueba que funciona abriendo en el navegador:
 
 ```
 http://localhost:8787/health
 ```
 
-## 3. Averiguar la IP de la PC
+Si responde correctamente, la PC ya está preparada para recibir los datos del Arduino.
 
-La IP que se pone en el Arduino es la **IP de la PC dentro del hotspot del teléfono**.
+### Puertos utilizados
 
-En Windows:
+| Función | Puerto |
+|---|---:|
+| Servidor HTTP | 8787 |
+| Dashboard WebSocket | 8787 |
+| Telemetría Arduino → PC | UDP 5005 |
+
+---
+
+## 4. Averiguar la IP que debes poner en el Arduino
+
+El Arduino necesita conocer la **IP de la PC dentro del hotspot del teléfono**.
+
+En PowerShell:
 
 ```powershell
 ipconfig
 ```
 
-Busca el adaptador Wi-Fi conectado al hotspot y su **IPv4**.
+Busca el adaptador Wi-Fi que está conectado al hotspot y localiza:
 
-Ejemplo:
+```
+IPv4 Address
+```
+
+Por ejemplo:
 
 ```
 10.156.133.12
 ```
 
-No uses `localhost` en el Arduino.
+Esa es la IP que debes colocar en el código del Arduino.
 
-## 4. Configurar el firewall de Windows
+**No pongas `localhost` ni `127.0.0.1` en el Arduino.** Esas direcciones significan "el propio Arduino", no la PC.
 
-El servidor recibe datos UDP por el puerto `5005`.
+---
 
-Si Windows Firewall bloquea la comunicación, crea una regla de entrada para:
+# 5. Configurar Arduino IDE desde cero
 
-```
-UDP 5005
-```
+Esta es la parte que debes seguir cuando vayas a cargar el programa al Arduino.
 
-También permite Bun en la red privada cuando Windows lo solicite.
+## 5.1 Instalar Arduino IDE
 
-Para la demostración, PC y Arduino deben estar en la misma red del teléfono.
+Instala Arduino IDE y ábrelo.
 
-## 5. Código del Arduino UNO R4 WiFi
+Conecta el **Arduino UNO R4 WiFi** mediante USB.
 
-El firmware está en:
+---
 
-```
-hardware/arduino_r4_wifi/arduino_r4_wifi.ino
-```
+## 5.2 Seleccionar la placa
 
-Hay también un firmware de respaldo:
-
-```
-hardware/arduino_r4_wifi/arduino_r4_wifi_simulacion.ino
-```
-
-### Firmware real
-
-Usa:
-
-- MPU6050 en tiempo real.
-- MQ-2 en A0.
-- Buzzer en D8.
-- WiFiS3.
-- UDP hacia la PC.
-- Frecuencia aproximada: 6–7 muestras/segundo.
-
-Antes de cargarlo, cambia:
-
-```cpp
-char ssid[] = "TU_HOTSPOT";
-char pass[] = "TU_PASSWORD";
-IPAddress pcIP(192, 168, 1, 100);
-```
-
-por los datos reales de tu red.
-
-**No subas contraseñas reales a GitHub.**
-
-### Firmware de simulación
-
-```
-hardware/arduino_r4_wifi/arduino_r4_wifi_simulacion.ino
-```
-
-Este permite probar toda la cadena aunque los sensores no estén conectados.
-
-Envía:
-
-```
-gas,ax,ay,az,gx,gy,gz
-```
-
-cada 200 ms.
-
-## 6. Librerías del Arduino IDE
-
-Para el firmware real instala:
-
-- Adafruit MPU6050
-- Adafruit Unified Sensor
-
-El soporte WiFiS3 viene con el core de Arduino UNO R4 WiFi.
-
-Selecciona:
+En Arduino IDE ve a:
 
 ```
 Tools → Board → Arduino UNO R4 Boards → Arduino UNO R4 WiFi
 ```
 
-Después selecciona el puerto COM correcto y carga el sketch.
+Si **Arduino UNO R4 WiFi** no aparece, instala primero el paquete:
 
-Serial Monitor:
+```
+Tools → Board → Boards Manager
+```
+
+Busca:
+
+```
+Arduino UNO R4 Boards
+```
+
+Instálalo y vuelve a seleccionar:
+
+```
+Arduino UNO R4 WiFi
+```
+
+---
+
+## 5.3 Seleccionar el puerto
+
+Con el Arduino conectado:
+
+```
+Tools → Port
+```
+
+Selecciona el puerto COM que corresponda al **Arduino UNO R4 WiFi**.
+
+Si aparecen varios puertos, desconecta el Arduino, mira cuál desaparece y vuelve a conectarlo. Ese es el puerto que debes seleccionar.
+
+---
+
+## 5.4 Instalar las librerías de los sensores
+
+Ve a:
+
+```
+Sketch → Include Library → Manage Libraries
+```
+
+Busca e instala estas dos librerías:
+
+1. **Adafruit MPU6050**
+2. **Adafruit Unified Sensor**
+
+No necesitas instalar `WiFiS3` desde Library Manager: viene con el soporte de la placa **UNO R4 WiFi**.
+
+El código también utiliza:
+
+- `Wire`
+- `WiFiS3`
+- `WiFiUdp`
+
+Estas forman parte del entorno/soporte de la placa.
+
+---
+
+# 6. Qué código debes cargar al Arduino
+
+Hay dos programas en el proyecto.
+
+### Para el hardware real
+
+Abre:
+
+```
+hardware/arduino_r4_wifi/arduino_r4_wifi.ino
+```
+
+Este es el que debes utilizar para la demostración con:
+
+- MPU6050
+- MQ-2
+- buzzer
+- Wi-Fi
+- transmisión UDP
+
+### Para probar solamente la comunicación
+
+Abre:
+
+```
+hardware/arduino_r4_wifi/arduino_r4_wifi_simulacion.ino
+```
+
+Este segundo programa genera valores ficticios y sirve para comprobar que:
+
+```
+Arduino → Wi-Fi → UDP → Bun → WebSocket → Dashboard
+```
+
+funciona aunque todavía no tengas conectados los sensores.
+
+---
+
+# 7. Antes de cargar el código real
+
+Dentro de:
+
+```
+arduino_r4_wifi.ino
+```
+
+encontrarás estas líneas:
+
+```cpp
+char ssid[] = "TU_HOTSPOT";
+char pass[] = "TU_PASSWORD";
+
+IPAddress pcIP(192, 168, 1, 100);
+unsigned int pcPort = 5005;
+```
+
+Cámbialas **solamente en tu copia local del Arduino IDE**.
+
+Por ejemplo:
+
+```cpp
+char ssid[] = "NOMBRE_DE_TU_HOTSPOT";
+char pass[] = "CONTRASEÑA_DE_TU_HOTSPOT";
+
+IPAddress pcIP(10, 156, 133, 12);
+unsigned int pcPort = 5005;
+```
+
+Donde:
+
+- `ssid` = nombre del hotspot del teléfono.
+- `pass` = contraseña del hotspot.
+- `pcIP` = IPv4 de la PC obtenida con `ipconfig`.
+- `pcPort` = debe permanecer en **5005**.
+
+**No cambies el formato del mensaje ni los pines del programa si estás utilizando el montaje actual.**
+
+---
+
+# 8. Subir ("inyectar") el programa al Arduino
+
+En Arduino IDE:
+
+1. Abre `arduino_r4_wifi.ino`.
+2. Configura la placa **Arduino UNO R4 WiFi**.
+3. Selecciona el puerto COM correcto.
+4. Instala las librerías indicadas arriba.
+5. Modifica `ssid`, `pass` y `pcIP`.
+6. Guarda el sketch.
+7. Pulsa **Verify** ✓ para compilar.
+8. Si no aparecen errores, pulsa **Upload** →.
+9. Espera a que Arduino IDE indique que la carga terminó correctamente.
+
+Ese proceso de **Upload** es lo que "inyecta" el firmware en la memoria del Arduino.
+
+Después puedes abrir:
+
+```
+Tools → Serial Monitor
+```
+
+y seleccionar:
 
 ```
 115200 baud
 ```
 
-## 7. Flujo de datos Arduino → Dashboard
+Al arrancar deberías poder comprobar la conexión Wi-Fi y la actividad del Arduino.
 
-El Arduino envía por UDP una línea como:
+---
+
+# 9. Qué hace exactamente el Arduino
+
+El programa realiza este ciclo:
+
+```
+MPU6050 ─┐
+         ├─→ Arduino UNO R4 WiFi ─→ UDP :5005 ─→ PC
+MQ-2 ────┤
+         │
+Buzzer ←─┘
+```
+
+El Arduino:
+
+1. lee aceleración del MPU6050;
+2. lee velocidad angular del MPU6050;
+3. lee el MQ-2 por `A0`;
+4. activa el buzzer local cuando el gas supera el umbral configurado;
+5. empaqueta los datos;
+6. los envía por Wi-Fi a la PC;
+7. repite el proceso aproximadamente cada 150 ms.
+
+El mensaje enviado tiene este formato:
+
+```
+gas,ax,ay,az,gx,gy,gz
+```
+
+Ejemplo:
 
 ```
 65,0.12,-0.05,9.81,0.01,0.00,0.02
 ```
 
-El servidor Bun:
+---
 
-1. recibe el paquete UDP en el puerto 5005;
-2. interpreta los siete valores;
-3. convierte el giroscopio de rad/s a °/s;
-4. agrega timestamp;
-5. asigna el casco `CASCO-001`;
-6. evalúa las reglas de seguridad;
-7. guarda la muestra en el dataset;
-8. envía telemetría al Dashboard por WebSocket;
-9. envía Telegram cuando corresponde.
+# 10. Cableado
 
-La batería todavía **no viene del Arduino**, por lo que el servidor muestra temporalmente 100 %. Cuando agreguemos medición de batería, reemplazaremos ese valor.
-
-## 8. Dashboard
-
-En otra terminal:
-
-```bash
-bun run dev
-```
-
-Abre la dirección que indique Vite.
-
-El Dashboard muestra:
-
-- estado de cada casco;
-- aceleración;
-- giroscopio;
-- MQ-2;
-- batería;
-- alertas recientes;
-- casco 3D;
-- módulos del casco;
-- voz de alertas;
-- simulación de emergencia.
-
-### Voz
-
-Al abrir el Dashboard pulsa una vez:
-
-**Activar voz**
-
-Después de esa activación, las alertas pueden anunciarse automáticamente.
-
-Ejemplo:
-
-> Posible caída detectada. Verificar al trabajador y activar el protocolo de emergencia.
-
-## 9. Alertas automáticas
-
-Las reglas actuales del servidor son experimentales:
-
-- MQ-2 >= 520 → advertencia.
-- MQ-2 >= 700 → gas crítico.
-- aceleración >= 22 m/s² → impacto.
-- giroscopio >= 280 °/s → impacto.
-- impacto seguido de baja actividad → posible caída.
-- sin telemetría durante aproximadamente 5 s → casco desconectado.
-
-Las alertas críticas se procesan automáticamente.
-
-Flujo:
-
-```
-sensor
-  ↓
-Arduino
-  ↓
-UDP
-  ↓
-Bun
-  ↓
-reglas de seguridad
-  ├── Dashboard
-  ├── voz
-  ├── Telegram
-  └── respuesta de emergencia simulada
-```
-
-La IA futura será complementaria. Las reglas deterministas continúan siendo la primera barrera de seguridad.
-
-## 10. Telegram
-
-Crea un bot con BotFather.
-
-Obtén:
-
-- token del bot;
-- chat ID.
-
-En la raíz crea un archivo `.env`:
-
-```env
-TELEGRAM_BOT_TOKEN=TU_TOKEN
-TELEGRAM_CHAT_ID=TU_CHAT_ID
-PORT=8787
-UDP_PORT=5005
-HELMET_ID=CASCO-001
-```
-
-Nunca publiques este archivo ni el token.
-
-Reinicia:
-
-```bash
-bun run server/index.ts
-```
-
-Cuando se detecte una alerta, el servidor enviará automáticamente la notificación a Telegram.
-
-## 11. Respuesta automática de emergencia
-
-En el Dashboard, una alerta crítica de:
-
-- posible caída;
-- gas crítico;
-
-activa automáticamente la respuesta de demostración.
-
-El Dashboard:
-
-1. muestra la alerta;
-2. reproduce la alerta por voz si la voz fue activada;
-3. muestra la solicitud de emergencia;
-4. mantiene el evento visible.
-
-**No se realiza una llamada telefónica real.**
-
-Para una llamada real habría que integrar posteriormente un proveedor de telefonía y definir un protocolo de confirmación. No se debe conectar una llamada real accidentalmente durante la feria.
-
-## 12. Cableado
-
-### MPU6050
+## MPU6050
 
 ```
 MPU6050       UNO R4 WiFi
@@ -626,7 +676,7 @@ SDA      →    SDA
 SCL      →    SCL
 ```
 
-### MQ-2
+## MQ-2
 
 ```
 MQ-2 AO   →   A0
@@ -634,45 +684,234 @@ MQ-2 GND  →   GND
 MQ-2 VCC  →   alimentación adecuada del módulo
 ```
 
-**Importante:** verifica la tensión de AO del módulo MQ-2. No asumas que una salida de 5 V es segura para A0.
+**Importante:** comprueba la tensión de salida AO de tu módulo MQ-2 antes de conectarlo al Arduino.
 
-### Buzzer
+## Buzzer
 
-El código actual usa D8.
-
-Si el buzzer necesita más tensión/corriente que la que puede entregar el Arduino:
+El programa utiliza:
 
 ```
-D8 → resistencia → transistor/MOSFET → buzzer → fuente externa
+D8
 ```
 
-No alimentes un buzzer de potencia directamente desde el pin.
+Si el buzzer requiere más corriente o tensión que la que puede entregar el Arduino, utiliza un transistor/MOSFET y una fuente adecuada. No conectes un buzzer de potencia directamente al GPIO.
 
-## 13. Prueba recomendada
+---
 
-Hazlo en este orden:
+# 11. Firewall de Windows
 
-### Prueba A — servidor
+El Arduino envía datos a la PC mediante **UDP 5005**.
 
-```bash
+Si Windows bloquea la comunicación, abre PowerShell como administrador y ejecuta:
+
+```powershell
+New-NetFirewallRule -DisplayName "EPI 4.0 UDP 5005" -Direction Inbound -Protocol UDP -LocalPort 5005 -Action Allow
+```
+
+Cuando Windows pregunte si Bun puede comunicarse en una red privada, permite la comunicación.
+
+---
+
+# 12. Levantar el Dashboard
+
+Con el servidor Bun todavía ejecutándose, abre **otra terminal**.
+
+Entra nuevamente a la carpeta del proyecto:
+
+```powershell
+cd $HOME\Desktop\FeriaCientifica2026
+```
+
+Ejecuta:
+
+```powershell
+bun run dev
+```
+
+Vite mostrará una dirección parecida a:
+
+```
+http://localhost:5173/
+```
+
+Ábrela en el navegador.
+
+El flujo completo queda:
+
+```
+┌─────────────────────┐
+│ Arduino UNO R4 WiFi │
+│ MPU6050 / MQ-2      │
+│ Buzzer              │
+└──────────┬──────────┘
+           │ UDP 5005
+           ▼
+┌─────────────────────┐
+│ PC                  │
+│ Bun                  │
+│ reglas de seguridad │
+└──────────┬──────────┘
+           │ WebSocket 8787
+           ▼
+┌─────────────────────┐
+│ Dashboard EPI 4.0   │
+│ 3D / alertas / voz  │
+└─────────────────────┘
+```
+
+---
+
+# 13. Orden correcto para encender todo en la feria
+
+Para evitar problemas, utiliza siempre este orden:
+
+### 1. Enciende el hotspot del teléfono
+
+El nombre y contraseña deben ser los mismos configurados en el Arduino.
+
+### 2. Conecta la PC al hotspot
+
+Comprueba la IP con:
+
+```powershell
+ipconfig
+```
+
+Si la IP cambió, actualiza `pcIP` en el Arduino y vuelve a cargar el sketch.
+
+### 3. Levanta Bun
+
+```powershell
 bun run server/index.ts
 ```
 
-Verifica:
+### 4. Levanta el Dashboard
+
+En otra terminal:
+
+```powershell
+bun run dev
+```
+
+### 5. Conecta el Arduino por USB
+
+El USB proporciona alimentación y permite cargar/monitorizar el programa.
+
+### 6. Enciende/reinicia el Arduino
+
+El Arduino se conecta automáticamente al hotspot y comienza a enviar telemetría.
+
+### 7. Abre el Dashboard
+
+Usa la dirección que indique Vite.
+
+---
+
+# 14. Cómo comprobar que todo está funcionando
+
+Comprueba la cadena en este orden:
+
+### Servidor
 
 ```
 http://localhost:8787/health
 ```
 
-### Prueba B — Dashboard
+Debe responder.
 
-```bash
+### Arduino
+
+En el Serial Monitor:
+
+```
+115200 baud
+```
+
+comprueba que se conectó al Wi-Fi.
+
+### Dashboard
+
+Debe pasar de:
+
+```
+ESPERANDO TELEMETRÍA
+```
+
+a mostrar el módulo y los datos recibidos.
+
+### Sensores
+
+Mueve el MPU6050 y comprueba que cambien:
+
+- aceleración;
+- giroscopio.
+
+El valor del MQ-2 debe cambiar cuando exista una variación en el ambiente.
+
+El buzzer funciona **localmente en el Arduino**, independientemente de la voz del navegador.
+
+---
+
+# 15. Alertas y respuesta de demostración
+
+Las reglas actuales del servidor son experimentales:
+
+- MQ-2 >= 520 → advertencia.
+- MQ-2 >= 700 → gas crítico.
+- aceleración >= 22 m/s² → impacto.
+- giroscopio >= 280 °/s → impacto.
+- impacto seguido de baja actividad → posible caída.
+- aproximadamente 5 segundos sin telemetría → módulo desconectado.
+
+Una alerta crítica puede producir:
+
+```
+sensor
+  ↓
+Arduino
+  ↓
+UDP
+  ↓
+Bun
+  ├── reglas de seguridad
+  └── dataset
+       ↓
+    Dashboard
+       ├── alerta visual
+       ├── alarma sonora del navegador
+       ├── voz automática
+       └── emergencia simulada
+```
+
+La emergencia es **solamente una simulación para la feria**. No se realiza una llamada telefónica real.
+
+---
+
+# 16. Prueba recomendada antes de la feria
+
+### Prueba 1 — servidor
+
+```powershell
+bun run server/index.ts
+```
+
+Comprueba:
+
+```
+http://localhost:8787/health
+```
+
+### Prueba 2 — Dashboard
+
+En otra terminal:
+
+```powershell
 bun run dev
 ```
 
-Abre Dashboard y verifica que indique servidor conectado.
+Abre el Dashboard.
 
-### Prueba C — Arduino simulado
+### Prueba 3 — Arduino simulado
 
 Carga:
 
@@ -680,9 +919,9 @@ Carga:
 arduino_r4_wifi_simulacion.ino
 ```
 
-Verifica en el Dashboard que cambien los valores de telemetría.
+Comprueba que el Dashboard reciba telemetría.
 
-### Prueba D — sensores reales
+### Prueba 4 — sensores reales
 
 Carga:
 
@@ -690,100 +929,118 @@ Carga:
 arduino_r4_wifi.ino
 ```
 
-Mueve el MPU6050 y verifica que cambien aceleración y giroscopio.
+Comprueba:
 
-Acerca una fuente controlada de prueba al MQ-2 y verifica la lectura. No uses gases peligrosos para provocar una alarma.
+- MPU6050;
+- MQ-2;
+- buzzer;
+- Wi-Fi;
+- transmisión UDP.
 
-### Prueba E — alerta
+### Prueba 5 — alerta
 
-Usa primero el simulador del Dashboard para comprobar:
+Prueba primero desde el simulador del Dashboard para comprobar:
 
-- voz;
 - alerta visual;
-- Telegram;
-- respuesta automática de demostración.
+- alarma;
+- voz;
+- respuesta de emergencia simulada.
 
-Después calibra los umbrales con los sensores reales.
+Después prueba el hardware real.
 
-## 14. Dataset
+---
 
-Las muestras reales y sintéticas se guardan localmente en:
+# 17. Dataset
+
+Las muestras se guardan localmente en:
 
 ```
 server/data/helmet_dataset.jsonl
 ```
 
-El archivo está pensado para permanecer fuera de GitHub.
-
 Generar datos sintéticos:
 
-```bash
+```powershell
 bun run server/generateSyntheticDataset.ts 10000
 ```
 
-## 15. Problemas frecuentes
+El dataset local no debe subirse a GitHub si contiene datos generados durante las pruebas.
 
-### El Arduino conecta al teléfono pero el Dashboard no recibe datos
+---
+
+# 18. Problemas frecuentes
+
+### El Arduino se conecta al teléfono, pero el Dashboard no recibe datos
 
 Comprueba:
 
 1. PC y Arduino están en el mismo hotspot.
-2. `pcIP` coincide con la IPv4 de la PC.
-3. UDP 5005 no está bloqueado por Firewall.
-4. Bun muestra `UDP telemetry listening on 0.0.0.0:5005`.
-5. El Dashboard está conectado al WebSocket 8787.
+2. `pcIP` coincide con la IPv4 actual de la PC.
+3. UDP 5005 no está bloqueado por Windows Firewall.
+4. Bun muestra que escucha en `0.0.0.0:5005`.
+5. El Dashboard está abierto desde la misma PC que ejecuta Bun.
 
-### El Dashboard dice "Modo demostración"
+### Cambió la IP de la PC
 
-El servidor WebSocket no está conectado.
+Es normal que un hotspot asigne otra IP.
 
-Ejecuta:
+Haz:
 
-```bash
+```powershell
+ipconfig
+```
+
+actualiza `pcIP` en el sketch y vuelve a pulsar **Upload**.
+
+### El Dashboard no conecta
+
+Comprueba primero que Bun esté ejecutándose:
+
+```powershell
 bun run server/index.ts
 ```
 
-y recarga el Dashboard.
+Después actualiza el navegador.
 
-### El MPU6050 no aparece
-
-El firmware no se detiene: utiliza valores de respaldo para acelerómetro/giroscopio y muestra el problema por Serial.
-
-Revisa alimentación, GND, SDA y SCL.
-
-### Telegram no llega
+### El MPU6050 no responde
 
 Revisa:
 
-- token;
-- chat ID;
-- que el bot haya recibido al menos un mensaje;
-- variables de `.env`;
-- reinicio del servidor.
+- VCC;
+- GND;
+- SDA;
+- SCL;
+- librerías instaladas;
+- placa seleccionada.
 
-## 16. Estado actual del prototipo
+### El buzzer no suena
 
-La integración actual ya contempla:
+Comprueba:
+
+- que esté conectado a D8;
+- alimentación;
+- polaridad;
+- que el MQ-2 esté entregando una lectura superior al umbral.
+
+---
+
+## Estado del prototipo
+
+La demostración integra:
 
 - Arduino UNO R4 WiFi;
 - MPU6050;
 - MQ-2;
 - buzzer local;
+- comunicación Wi-Fi;
 - UDP;
 - servidor Bun;
 - WebSocket;
 - Dashboard React;
 - visualización 3D;
 - dataset;
-- Telegram;
-- alertas por voz;
-- respuesta automática simulada.
+- alertas automáticas;
+- voz;
+- respuesta de emergencia simulada.
 
-Pendiente antes de presentar resultados como mediciones reales:
-
-- calibrar MQ-2;
-- calibrar umbrales de impacto/caída;
-- añadir medición real de batería;
-- probar estabilidad Wi-Fi;
-- probar el sistema completo con el hardware físico;
-- ejecutar `bun run build` y la prueba final en la PC que se usará en la feria.
+Antes de presentar resultados como mediciones científicas definitivas, conviene calibrar el MQ-2, ajustar los umbrales de impacto/caída y probar varias veces el flujo completo en la misma PC y hotspot que se utilizarán durante la feria.
