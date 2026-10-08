@@ -1,7 +1,10 @@
 import { appendDatasetSample, type DatasetLabel } from "./dataset";
+import dgram from "node:dgram";
 import { sendTelegramAlert } from "./telegram";
 
 const PORT = Number(process.env.PORT ?? 8787);
+const UDP_PORT = Number(process.env.UDP_PORT ?? 5005);
+const DEFAULT_HELMET_ID = process.env.HELMET_ID ?? "CASCO-001";
 
 type Vector3 = { x: number; y: number; z: number };
 type Telemetry = {
@@ -208,6 +211,46 @@ async function processTelemetry(value: Telemetry) {
 
   return event;
 }
+
+function processUdpPacket(message: Buffer, remoteAddress: string) {
+  const parts = message.toString("utf8").trim().split(",").map(Number);
+  if (parts.length !== 7 || parts.some((value) => !Number.isFinite(value))) {
+    console.warn(`UDP inválido desde ${remoteAddress}: ${message.toString("utf8")}`);
+    return;
+  }
+
+  const [gas, ax, ay, az, gxRad, gyRad, gzRad] = parts;
+  const radToDeg = 180 / Math.PI;
+  const telemetry: Telemetry = {
+    helmetId: DEFAULT_HELMET_ID,
+    timestamp: Date.now(),
+    accel: { x: ax, y: ay, z: az },
+    // Adafruit MPU6050 reports gyro in rad/s; the dashboard/server use deg/s.
+    gyro: { x: gxRad * radToDeg, y: gyRad * radToDeg, z: gzRad * radToDeg },
+    gas,
+    // The current Arduino packet has no battery field. Replace this when battery telemetry is added.
+    battery: 100,
+    source: "real",
+  };
+
+  void processTelemetry(telemetry).catch((error) =>
+    console.error("UDP telemetry error:", error),
+  );
+}
+
+const udpServer = dgram.createSocket("udp4");
+
+udpServer.on("message", (message, remote) => {
+  processUdpPacket(message, remote.address);
+});
+
+udpServer.on("error", (error) => {
+  console.error("UDP server error:", error);
+});
+
+udpServer.bind(UDP_PORT, "0.0.0.0", () => {
+  console.log(`UDP telemetry listening on 0.0.0.0:${UDP_PORT}`);
+});
 
 function corsHeaders() {
   return {
