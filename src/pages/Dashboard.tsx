@@ -26,23 +26,43 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState("CASCO-001");
   const [simulation, setSimulation] = useState<SafetyEventType>("NORMAL");
   const [connected, setConnected] = useState(false);
-  const [voiceReady, setVoiceReady] = useState(false);
   const [ambulanceSimulation, setAmbulanceSimulation] = useState<"IDLE" | "REQUESTED">("IDLE");
 
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const simulationStepRef = useRef(0);
   const lastSimEventRef = useRef(0);
   const spokenEventRef = useRef<Map<string, number>>(new Map());
-  const voiceReadyRef = useRef(false);
+  const alarmAudioRef = useRef<AudioContext | undefined>(undefined);
   const simulationWindowIdRef = useRef(`DASH-${Date.now()}`);
+
+  const triggerLocalAlarm = () => {
+    try {
+      const Ctx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = alarmAudioRef.current ?? new Ctx();
+      alarmAudioRef.current = ctx;
+      if (ctx.state === "suspended") void ctx.resume();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.setValueAtTime(660, now + 0.18);
+      osc.frequency.setValueAtTime(880, now + 0.36);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.52);
+    } catch {}
+  };
 
   const requestAmbulanceSimulation = (helmetId: string) => {
     setAmbulanceSimulation("REQUESTED");
-    if ("speechSynthesis" in window && voiceReadyRef.current) {
+    if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(
-        `Emergencia detectada. Solicitando una ambulancia para el trabajador del módulo ${helmetId}. Esto es una simulación y no realiza una llamada real.`,
-      );
+      const utterance = new SpeechSynthesisUtterance(`Emergencia detectada. Solicitando una ambulancia para el trabajador del módulo ${helmetId}. Esto es una simulación y no realiza una llamada real.`);
       utterance.lang = "es-GT";
       utterance.rate = 0.95;
       window.speechSynthesis.speak(utterance);
@@ -51,7 +71,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     const speak = (event: SafetyEvent) => {
-      if (!("speechSynthesis" in window) || !voiceReadyRef.current) return;
+      if (!("speechSynthesis" in window)) return;
+      triggerLocalAlarm();
       const key = event.helmetId + "-" + event.type;
       const now = Date.now();
       const lastSpoken = spokenEventRef.current.get(key) ?? 0;
@@ -231,35 +252,16 @@ export default function Dashboard() {
           )}
         </p>
       </div>
-      <div className="flex flex-wrap gap-2 self-start">
-        <Button type="button" variant={voiceReady ? "default" : "outline"} className="gap-2" onClick={() => {
-          if (typeof window.speechSynthesis === "undefined") {
-            window.alert("Este navegador no admite voz sintetizada.");
-            return;
-          }
-          const utterance = new SpeechSynthesisUtterance("Voz de alertas activada. Sistema EPI cuatro punto cero.");
-          utterance.lang = "es-GT";
-          utterance.rate = 0.95;
-          utterance.onend = () => {
-            voiceReadyRef.current = true;
-            setVoiceReady(true);
-          };
-          utterance.onerror = () => {
-            voiceReadyRef.current = false;
-            setVoiceReady(false);
-          };
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(utterance);
-        }}>
-          <Volume2 className="size-4" /> {voiceReady ? "Voz activada" : "Activar voz"}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2 self-start">
+        <span className="flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300"><Volume2 className="size-3.5" /> VOZ DE ALERTAS · AUTO</span>
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300">ALARMA LOCAL · AUTO</span>
       </div>
     </header>
     <section className="grid gap-3 sm:grid-cols-3 epi-data-line"><Summary icon={<CircleCheck className="size-5" />} label="Normales" value={counts.online} /><Summary icon={<AlertTriangle className="size-5" />} label="Advertencias" value={counts.warning} /><Summary icon={<ShieldAlert className="size-5" />} label="Críticos" value={counts.critical} /></section>
     {snapshots.length === 0 && <Card className="border-dashed border-border shadow-none"><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><WifiOff className="size-10 text-muted-foreground" /><h2 className="mt-4 text-xl font-semibold">No hay módulos disponibles</h2><p className="mt-2 max-w-md text-sm text-muted-foreground">El centro de monitoreo está activo y esperando telemetría. Conecta un módulo EPI 4.0 a la misma red para que aparezca automáticamente.</p></CardContent></Card>}
     <section className="grid gap-6 lg:grid-cols-[1.5fr_1fr]"><Card className="border-border/70 bg-card/90 shadow-none backdrop-blur-sm"><CardHeader className="flex flex-row items-center justify-between space-y-0"><div><CardTitle>Módulos conectados</CardTitle><p className="mt-1 text-sm text-muted-foreground">Telemetría recibida de cada módulo</p></div><Activity className="size-5 text-primary" /></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">{snapshots.map((item) => { const data = item.telemetry; return <button key={data.helmetId} type="button" onClick={() => setSelectedId(data.helmetId)} className={`rounded-xl border p-4 text-left transition-colors ${data.helmetId === selectedId ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{data.workerName}</p><p className="text-xs text-muted-foreground">{data.helmetId}</p></div><span className={`rounded-full border px-2 py-1 text-xs font-medium ${statusClasses[item.status]}`}>{statusLabel[item.status]}</span></div><div className="mt-4 grid grid-cols-3 gap-2 text-xs text-muted-foreground"><span>Gas <strong className="text-foreground">{Math.round(data.gas)}</strong></span><span>Batería <strong className="text-foreground">{Math.round(data.battery)}%</strong></span><span>Acel. <strong className="text-foreground">{magnitude(data.accel).toFixed(1)}</strong></span></div></button>; })}</CardContent></Card><Card className="border-border/70 shadow-none"><CardHeader><CardTitle>Alertas recientes</CardTitle><p className="text-sm text-muted-foreground">Eventos detectados por las reglas de seguridad</p></CardHeader><CardContent className="space-y-3">{events.length === 0 ? <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">No se han detectado eventos.</div> : events.slice(0, 5).map((event) => <div key={event.id} className="border-l-2 border-red-500 pl-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{event.helmetId} · {event.type.replace(/_/g, " ")}</p><span className="text-xs text-muted-foreground">{new Date(event.timestamp).toLocaleTimeString()}</span></div><p className="mt-1 text-xs text-muted-foreground">{event.message}</p></div>)}</CardContent></Card></section>
     {selected && <section className="grid gap-6"><Card className="border-border/70 shadow-none"><CardHeader><CardTitle>Vista 3D del módulo</CardTitle><p className="text-sm text-muted-foreground">Explora el módulo Wi-Fi y relaciona sus componentes con la telemetría en vivo.</p></CardHeader><CardContent><Helmet3D telemetry={selected.telemetry} status={statusLabel[selected.status]} /></CardContent></Card></section>}
-    {selected && <section className="grid gap-6 lg:grid-cols-[1fr_280px]"><Card className="border-border/70 shadow-none"><CardHeader className="flex flex-row items-center justify-between space-y-0"><div><CardTitle>{selected.telemetry.workerName}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{selected.telemetry.helmetId} · sensores en vivo</p></div><RefreshCw className="size-5 animate-spin text-muted-foreground [animation-duration:3s]" /></CardHeader><CardContent className="grid gap-3 sm:grid-cols-3"><SensorValue icon={<Gauge className="size-4" />} label="Aceleración" value={`${magnitude(selected.telemetry.accel).toFixed(2)} m/s²`} /><SensorValue icon={<Activity className="size-4" />} label="Giroscopio" value={`${magnitude(selected.telemetry.gyro).toFixed(1)} °/s`} /><SensorValue icon={<Wind className="size-4" />} label="Gas MQ-2" value={Math.round(selected.telemetry.gas).toString()} /></CardContent></Card><Card className="border-border/70 shadow-none"><CardHeader><CardTitle>Prueba del prototipo</CardTitle><p className="text-xs text-muted-foreground">Las pruebas también alimentan el pipeline cuando el servidor está conectado.</p></CardHeader><CardContent className="space-y-2"><SimulationButton active={simulation === "NORMAL"} onClick={() => setSimulation("NORMAL")}>Normal</SimulationButton><SimulationButton active={simulation === "GAS_DETECTED"} onClick={() => setSimulation("GAS_DETECTED")}>Gas elevado</SimulationButton><SimulationButton active={simulation === "POSSIBLE_FALL"} onClick={() => setSimulation("POSSIBLE_FALL")}>Posible caída</SimulationButton><Button type="button" variant="destructive" className="w-full justify-start" onClick={() => requestAmbulanceSimulation(selected.telemetry.helmetId)}>Simular llamada a ambulancia</Button>{ambulanceSimulation === "REQUESTED" && <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"><strong>SIMULACIÓN — NO SE LLAMÓ A EMERGENCIAS</strong><p className="mt-1 text-xs">Solicitud simulada para {selected.telemetry.helmetId}. No se ha contactado ningún servicio externo.</p><Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setAmbulanceSimulation("IDLE")}>Restablecer prueba</Button></div>}<p className="flex items-center gap-2 pt-2 text-xs text-muted-foreground"><Battery className="size-3.5" /> Batería {Math.round(selected.telemetry.battery)}%</p></CardContent></Card></section>}
+    {selected && <section className="grid gap-6 lg:grid-cols-[1fr_280px]"><Card className="border-border/70 shadow-none"><CardHeader className="flex flex-row items-center justify-between space-y-0"><div><CardTitle>{selected.telemetry.workerName}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{selected.telemetry.helmetId} · sensores en vivo</p></div><RefreshCw className="size-5 animate-spin text-muted-foreground [animation-duration:3s]" /></CardHeader><CardContent className="grid gap-3 sm:grid-cols-3"><SensorValue icon={<Gauge className="size-4" />} label="Aceleración" value={`${magnitude(selected.telemetry.accel).toFixed(2)} m/s²`} /><SensorValue icon={<Activity className="size-4" />} label="Giroscopio" value={`${magnitude(selected.telemetry.gyro).toFixed(1)} °/s`} /><SensorValue icon={<Wind className="size-4" />} label="Gas MQ-2" value={Math.round(selected.telemetry.gas).toString()} /></CardContent></Card><Card className="border-border/70 shadow-none"><CardHeader><CardTitle>Prueba del prototipo</CardTitle><p className="text-xs text-muted-foreground">Las pruebas también alimentan el pipeline cuando el servidor está conectado.</p></CardHeader><CardContent className="space-y-2"><SimulationButton active={simulation === "NORMAL"} onClick={() => setSimulation("NORMAL")}>Normal</SimulationButton><SimulationButton active={simulation === "GAS_DETECTED"} onClick={() => setSimulation("GAS_DETECTED")}>Gas elevado</SimulationButton><SimulationButton active={simulation === "POSSIBLE_FALL"} onClick={() => setSimulation("POSSIBLE_FALL")}>Posible caída</SimulationButton>{ambulanceSimulation === "REQUESTED" && <div role="status" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm animate-pulse"><strong>🚑 EMERGENCIAS — SIMULACIÓN AUTOMÁTICA</strong><p className="mt-1 text-xs">Se simula la solicitud de una ambulancia para {selected.telemetry.helmetId}. No se realiza ninguna llamada real.</p></div>}<p className="flex items-center gap-2 pt-2 text-xs text-muted-foreground"><Battery className="size-3.5" /> Batería {Math.round(selected.telemetry.battery)}%</p></CardContent></Card></section>}
     <footer className="flex items-center gap-2 text-xs text-muted-foreground"><CircleOff className="size-3.5" /> Los umbrales son experimentales y deberán calibrarse con los sensores reales.</footer>
   </div></main>;
 }
