@@ -1,18 +1,33 @@
-import { api } from "@/convex/_generated/api";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useCallback, useState } from "react";
+
+type DemoUser = { name: string; email: string };
 
 export function useAuth() {
-  const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
-  const user = useQuery(api.users.currentUser);
-  const { signIn, signOut } = useAuthActions();
+  const [user, setUser] = useState<DemoUser | null>(() => {
+    try {
+      const raw = localStorage.getItem("epi4-demo-user");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
 
-  // Derive isLoading directly from the dependencies instead of managing separate state
-  const isLoading = isAuthLoading || user === undefined;
+  const signIn = useCallback(async (provider: string, formData?: FormData) => {
+    const email = String(formData?.get("email") ?? "demo@epi4.local");
+    const next = { name: email === "demo@epi4.local" ? "Operador EPI 4.0" : email.split("@")[0], email };
+    localStorage.setItem("epi4-demo-user", JSON.stringify(next));
+    setUser(next);
+    return null;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    localStorage.removeItem("epi4-demo-user");
+    setUser(null);
+  }, []);
 
   return {
-    isLoading,
-    isAuthenticated,
+    isLoading: false,
+    isAuthenticated: user !== null,
     user,
     signIn,
     signOut,
