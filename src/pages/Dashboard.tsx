@@ -131,7 +131,11 @@ export default function Dashboard() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       setTelemetry((current) => current.map((item) => {
-        if (item.helmetId !== selectedId && connected) return item;
+        // Con servidor conectado, la telemetría física recibida por WebSocket es la única fuente de verdad.
+        // No debemos sobrescribirla con el simulador local.
+        if (connected) return item;
+
+        if (item.helmetId !== selectedId) return item;
 
         simulationStepRef.current += 1;
         const step = simulationStepRef.current;
