@@ -29,7 +29,8 @@ const lastTelemetry = new Map<string, Telemetry>();
 const lastSeen = new Map<string, number>();
 const history = new Map<string, Telemetry[]>();
 const lastFallAlert = new Map<string, number>();
-const lastGasAlert = new Map<string, number>();\nconst lastGasWarning = new Map<string, number>();
+const lastGasAlert = new Map<string, number>();
+const lastGasWarning = new Map<string, number>();
 
 const THRESHOLDS = {
   gasWarning: 520,
