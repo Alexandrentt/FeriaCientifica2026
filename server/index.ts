@@ -29,7 +29,7 @@ const lastTelemetry = new Map<string, Telemetry>();
 const lastSeen = new Map<string, number>();
 const history = new Map<string, Telemetry[]>();
 const lastFallAlert = new Map<string, number>();
-const lastGasAlert = new Map<string, number>();
+const lastGasAlert = new Map<string, number>();\nconst lastGasWarning = new Map<string, number>();
 
 const THRESHOLDS = {
   gasWarning: 520,
@@ -131,13 +131,17 @@ function evaluate(data: Telemetry): SafetyEvent | null {
   }
 
   if (data.gas >= THRESHOLDS.gasWarning) {
-    return {
-      helmetId: data.helmetId,
-      timestamp: data.timestamp,
-      type: "GAS_DETECTED",
-      risk: "MEDIUM",
-      message: "Lectura MQ-2 por encima del umbral preventivo.",
-    };
+    const previous = lastGasWarning.get(data.helmetId) ?? 0;
+    if (now - previous >= THRESHOLDS.eventCooldownMs) {
+      lastGasWarning.set(data.helmetId, now);
+      return {
+        helmetId: data.helmetId,
+        timestamp: data.timestamp,
+        type: "GAS_DETECTED",
+        risk: "MEDIUM",
+        message: "Lectura MQ-2 por encima del umbral preventivo.",
+      };
+    }
   }
 
   return null;
