@@ -124,3 +124,51 @@
     cursor: pointer;
   }
 }
+
+
+/* EPI 4.0 industrial monitoring motion layer */
+@keyframes epi-scan {
+  0% { transform: translateY(-110%); opacity: 0; }
+  12% { opacity: .45; }
+  88% { opacity: .18; }
+  100% { transform: translateY(110vh); opacity: 0; }
+}
+@keyframes epi-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: .9; }
+  50% { box-shadow: 0 0 0 7px transparent; opacity: 1; }
+}
+@keyframes epi-data {
+  0% { transform: translateX(-100%); opacity: 0; }
+  15%, 75% { opacity: .8; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+.epi-monitor {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.epi-monitor::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(34,211,238,.65), transparent);
+  animation: epi-scan 8s linear infinite;
+  pointer-events: none;
+  z-index: 20;
+}
+.epi-pulse { animation: epi-pulse 2s ease-in-out infinite; }
+.epi-data-line { position: relative; overflow: hidden; }
+.epi-data-line::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(34,211,238,.35), transparent);
+  animation: epi-data 2.4s linear infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .epi-monitor::after, .epi-pulse, .epi-data-line::after { animation: none; }
+}
