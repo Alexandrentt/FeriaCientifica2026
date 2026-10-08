@@ -195,7 +195,7 @@ Las muestras sintéticas se agrupan en ventanas de 10 s a 5 Hz y contienen secue
 
 ## 8. Simulador
 
-El simulador del dashboard usa el mismo pipeline cuando el servidor está conectado:
+El simulador del dashboard permite probar los estados Normal, Gas elevado y Posible caída. También incluye el botón **Simular llamada a ambulancia**: solo muestra un estado de emergencia y anuncia el mensaje con voz del navegador; **no realiza una llamada real ni contacta servicios de emergencia**.\n\nEl simulador del dashboard usa el mismo pipeline cuando el servidor está conectado:
 
 ```text
 Dashboard
