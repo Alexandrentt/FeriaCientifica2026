@@ -2,18 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { HelmetTelemetry } from "@/lib/helmetTelemetry";
 
-type ModuleId = "MPU6050" | "MQ-2" | "BUZZER" | "ESP32" | "BATTERY";
+type ModuleId = "MCU_WIFI" | "MPU6050" | "MQ-2" | "BUZZER" | "BATTERY";
 
 const moduleInfo: Record<ModuleId, { label: string; description: string }> = {
-  ESP32: { label: "ESP32", description: "Controlador, Wi-Fi y enlace con el servidor local." },
+  MCU_WIFI: { label: "Control + Wi-Fi", description: "Controlador del módulo, enlace inalámbrico y envío de telemetría al servidor local." },
   MPU6050: { label: "MPU6050", description: "Acelerómetro y giroscopio para movimiento e impactos." },
   "MQ-2": { label: "MQ-2", description: "Sensor experimental de presencia de gas combustible." },
   BUZZER: { label: "Buzzer", description: "Alerta sonora local controlada por el ESP32." },
-  BATTERY: { label: "Batería", description: "Alimentación del casco; porcentaje mostrado actualmente como dato de prueba." },
+  BATTERY: { label: "Alimentación", description: "Fuente de energía del módulo; el porcentaje mostrado es actualmente un dato de prueba." },
 };
 
 const modulePositions: Record<ModuleId, [number, number, number]> = {
-  ESP32: [0.0, 0.05, -0.52],
+  MCU_WIFI: [0.0, 0.05, -0.52],
   MPU6050: [-0.38, 0.16, -0.02],
   "MQ-2": [0.40, 0.08, 0.10],
   BUZZER: [0.12, -0.10, 0.52],
@@ -23,8 +23,8 @@ const modulePositions: Record<ModuleId, [number, number, number]> = {
 export function Helmet3D({ telemetry, status }: { telemetry: HelmetTelemetry; status: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const telemetryRef = useRef(telemetry);
-  const selectedModuleRef = useRef<ModuleId>("ESP32");
-  const [selectedModule, setSelectedModule] = useState<ModuleId>("ESP32");
+  const selectedModuleRef = useRef<ModuleId>("MCU_WIFI");
+  const [selectedModule, setSelectedModule] = useState<ModuleId>("MCU_WIFI");
 
   telemetryRef.current = telemetry;
   selectedModuleRef.current = selectedModule;
@@ -49,34 +49,46 @@ export function Helmet3D({ telemetry, status }: { telemetry: HelmetTelemetry; st
     key.position.set(2, 3, 3);
     scene.add(key);
 
-    const helmet = new THREE.Group();
-    scene.add(helmet);
+    const device = new THREE.Group();
+    scene.add(device);
 
-    const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.92, 40, 24, 0, Math.PI * 2, 0, Math.PI * 0.62),
-      new THREE.MeshStandardMaterial({ color: 0x28313b, metalness: 0.15, roughness: 0.68 }),
+    const enclosure = new THREE.Mesh(
+      new THREE.BoxGeometry(1.45, 0.78, 0.92),
+      new THREE.MeshStandardMaterial({ color: 0x252c33, metalness: 0.35, roughness: 0.5 }),
     );
-    shell.scale.set(1.05, 0.78, 0.98);
-    shell.position.y = 0.02;
-    helmet.add(shell);
+    enclosure.position.y = 0.02;
+    enclosure.rotation.y = -0.08;
+    device.add(enclosure);
 
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.78, 0.045, 10, 40),
-      new THREE.MeshStandardMaterial({ color: 0x65717d, metalness: 0.25, roughness: 0.55 }),
+    const topPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(1.22, 0.055, 0.70),
+      new THREE.MeshStandardMaterial({ color: 0x4b5661, metalness: 0.5, roughness: 0.38 }),
     );
-    rim.rotation.x = Math.PI / 2;
-    rim.scale.set(1.08, 0.95, 1);
-    rim.position.y = -0.38;
-    helmet.add(rim);
+    topPlate.position.set(0, 0.42, 0);
+    topPlate.rotation.y = -0.08;
+    device.add(topPlate);
 
-    const visor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.78, 0.30, 0.08),
-      new THREE.MeshStandardMaterial({ color: 0x111820, transparent: true, opacity: 0.82, metalness: 0.55, roughness: 0.22 }),
+    const frontPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(1.08, 0.34, 0.045),
+      new THREE.MeshStandardMaterial({ color: 0x111820, metalness: 0.65, roughness: 0.25 }),
     );
-    visor.position.set(0, 0.0, 0.77);
-    visor.rotation.x = -0.08;
-    visor.scale.set(1.0, 0.72, 1);
-    helmet.add(visor);
+    frontPanel.position.set(0, -0.03, 0.49);
+    device.add(frontPanel);
+
+    const led = new THREE.Mesh(
+      new THREE.SphereGeometry(0.055, 16, 12),
+      new THREE.MeshStandardMaterial({ color: 0x8a949e, emissive: 0x203040, emissiveIntensity: 1.5 }),
+    );
+    led.position.set(0.44, 0.10, 0.53);
+    device.add(led);
+
+    const antenna = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 0.42, 12),
+      new THREE.MeshStandardMaterial({ color: 0x8a949e, metalness: 0.7, roughness: 0.3 }),
+    );
+    antenna.position.set(-0.48, 0.56, -0.18);
+    antenna.rotation.z = -0.25;
+    device.add(antenna);
 
     const moduleMeshes = new Map<ModuleId, THREE.Mesh>();
 
@@ -92,16 +104,16 @@ export function Helmet3D({ telemetry, status }: { telemetry: HelmetTelemetry; st
       mesh.position.set(...modulePositions[id]);
       if (id === "BUZZER") mesh.rotation.x = Math.PI / 2;
       mesh.userData.moduleId = id;
-      helmet.add(mesh);
+      device.add(mesh);
       moduleMeshes.set(id, mesh);
     });
 
     const wires = new THREE.Group();
     const wireMaterial = new THREE.LineBasicMaterial({ color: 0x66717c, transparent: true, opacity: 0.7 });
-    const center = new THREE.Vector3(...modulePositions.ESP32);
+    const center = new THREE.Vector3(...modulePositions.MCU_WIFI);
 
     (Object.keys(modulePositions) as ModuleId[])
-      .filter((id) => id !== "ESP32")
+      .filter((id) => id !== "MCU_WIFI")
       .forEach((id) => {
         const geometry = new THREE.BufferGeometry().setFromPoints([
           center,
@@ -109,7 +121,7 @@ export function Helmet3D({ telemetry, status }: { telemetry: HelmetTelemetry; st
         ]);
         wires.add(new THREE.Line(geometry, wireMaterial));
       });
-    helmet.add(wires);
+    device.add(wires);
 
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(1.5, 48),
@@ -150,11 +162,16 @@ export function Helmet3D({ telemetry, status }: { telemetry: HelmetTelemetry; st
       animationFrame = requestAnimationFrame(animate);
       const current = telemetryRef.current;
 
-      helmet.rotation.y += 0.0025;
-      helmet.rotation.x = THREE.MathUtils.lerp(
-        helmet.rotation.x,
-        Math.max(-0.18, Math.min(0.18, current.gyro.y / 900)),
-        0.04,
+      device.rotation.y += 0.0025;
+      device.rotation.x = THREE.MathUtils.lerp(
+        device.rotation.x,
+        Math.max(-0.28, Math.min(0.28, current.gyro.y / 700)),
+        0.05,
+      );
+      device.rotation.z = THREE.MathUtils.lerp(
+        device.rotation.z,
+        Math.max(-0.28, Math.min(0.28, current.gyro.x / 700)),
+        0.05,
       );
 
       moduleMeshes.forEach((mesh, id) => {
@@ -195,8 +212,8 @@ export function Helmet3D({ telemetry, status }: { telemetry: HelmetTelemetry; st
       <div ref={mountRef} className="min-h-[360px] overflow-hidden rounded-xl border border-border bg-black" />
       <div className="space-y-3">
         <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">Casco seleccionado</p>
-          <p className="font-semibold">{telemetry.helmetId}</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Módulo seleccionado</p>
+          <p className="font-semibold">Módulo Wi-Fi · {telemetry.helmetId}</p>
           <p className="text-xs text-muted-foreground">{telemetry.workerName || "Trabajador no asignado"}</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
